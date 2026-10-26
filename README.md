@@ -112,5 +112,8 @@ The final parental-control app can be composed from these small React Native And
 | `@eye-saver/child-session` | Persistent, low-power screen-on usage timer with warning/expiry timestamps |
 | `@eye-saver/device-guard` | Device Admin lock, break screen, and Device Owner enforcement primitives |
 | `@eye-saver/face-verification-core` | Android Keystore-encrypted face embeddings and on-device comparison |
+| `@eye-saver/parent-auth` | Keystore-backed, rate-limited parent PIN verification |
+
+An Android-first integration app lives in [`apps/eye-saver`](apps/eye-saver). It wires parent authentication, protection readiness, configurable child sessions, expiry break UI and the optional proximity warning. The CameraX/TFLite face-embedding adapter remains the next implementation milestone.
 
 The face core does not open the camera or identify a face by itself. The final app must add a visible CameraX/TFLite adapter that creates embeddings using one fixed model. Continuous or secret background camera capture is not part of this architecture.

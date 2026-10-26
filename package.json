@@ -5,7 +5,10 @@
   "main": "src/index.ts",
   "react-native": "src/index.ts",
   "types": "src/index.ts",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "files": [
     "android/build.gradle",
     "android/gradle.properties",
@@ -15,20 +18,42 @@
     "README.md",
     "LICENSE"
   ],
-  "scripts": {"typecheck": "tsc --noEmit", "test": "npm run typecheck"},
-  "keywords": ["react-native", "android", "kotlin", "proximity-sensor", "digital-wellbeing"],
+  "scripts": {
+    "app:android": "npm run android --workspace @eye-saver/app",
+    "app:lint": "npm run lint --workspace @eye-saver/app",
+    "app:start": "npm run start --workspace @eye-saver/app",
+    "app:test": "npm test --workspace @eye-saver/app -- --runInBand",
+    "app:typecheck": "tsc -p apps/eye-saver/tsconfig.json --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck"
+  },
+  "keywords": [
+    "react-native",
+    "android",
+    "kotlin",
+    "proximity-sensor",
+    "digital-wellbeing"
+  ],
   "author": "Manoj",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/manoj020218/eye_saver.git"
   },
-  "bugs": {"url": "https://github.com/manoj020218/eye_saver/issues"},
-  "peerDependencies": {"react": ">=17", "react-native": ">=0.71"},
+  "bugs": {
+    "url": "https://github.com/manoj020218/eye_saver/issues"
+  },
+  "peerDependencies": {
+    "react": ">=17",
+    "react-native": ">=0.71"
+  },
   "devDependencies": {
+    "@react-native-community/cli": "^20.0.2",
+    "@react-native/community-cli-plugin": "^0.82.1",
+    "@react-native/gradle-plugin": "^0.82.1",
     "@types/react": "^19.0.0",
-    "react": "^19.0.0",
-    "react-native": "^0.82.0",
+    "react": "19.1.1",
+    "react-native": "0.82.1",
     "typescript": "^5.7.0"
   }
 }
