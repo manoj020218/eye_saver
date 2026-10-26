@@ -1,0 +1,34 @@
+{
+  "name": "react-native-face-proximity",
+  "version": "0.1.0",
+  "description": "Low-power Android face-proximity events for React Native, backed by Kotlin SensorManager.",
+  "main": "src/index.ts",
+  "react-native": "src/index.ts",
+  "types": "src/index.ts",
+  "workspaces": ["packages/*"],
+  "files": [
+    "android/build.gradle",
+    "android/gradle.properties",
+    "android/src",
+    "src",
+    "react-native.config.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {"typecheck": "tsc --noEmit", "test": "npm run typecheck"},
+  "keywords": ["react-native", "android", "kotlin", "proximity-sensor", "digital-wellbeing"],
+  "author": "Manoj",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/manoj020218/eye_saver.git"
+  },
+  "bugs": {"url": "https://github.com/manoj020218/eye_saver/issues"},
+  "peerDependencies": {"react": ">=17", "react-native": ">=0.71"},
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "react": "^19.0.0",
+    "react-native": "^0.82.0",
+    "typescript": "^5.7.0"
+  }
+}

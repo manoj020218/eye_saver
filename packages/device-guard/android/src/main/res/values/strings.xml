@@ -1,0 +1,4 @@
+<resources>
+  <string name="eye_saver_admin_label">Eye Saver parental controls</string>
+  <string name="eye_saver_admin_description">Allows a parent to lock the device when a child session ends.</string>
+</resources>

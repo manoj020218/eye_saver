@@ -1,0 +1,19 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+  <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+  <application>
+    <receiver
+      android:name=".EyeSaverAdminReceiver"
+      android:description="@string/eye_saver_admin_description"
+      android:exported="true"
+      android:label="@string/eye_saver_admin_label"
+      android:permission="android.permission.BIND_DEVICE_ADMIN">
+      <meta-data android:name="android.app.device_admin" android:resource="@xml/eye_saver_device_admin" />
+      <intent-filter><action android:name="android.app.action.DEVICE_ADMIN_ENABLED" /></intent-filter>
+    </receiver>
+    <activity
+      android:name=".BreakActivity"
+      android:excludeFromRecents="true"
+      android:exported="false"
+      android:theme="@style/EyeSaverBreakTheme" />
+  </application>
+</manifest>

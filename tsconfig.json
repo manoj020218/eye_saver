@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "lib": ["ES2020"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2020"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "example/**/*.tsx", "packages/*/src/**/*.ts"]
+}

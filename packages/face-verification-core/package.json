@@ -1,0 +1,11 @@
+{
+  "name": "@eye-saver/face-verification-core",
+  "version": "0.1.0",
+  "description": "Encrypted on-device face-template storage and comparison for React Native Android.",
+  "main": "src/index.ts",
+  "react-native": "src/index.ts",
+  "types": "src/index.ts",
+  "files": ["android/build.gradle", "android/gradle.properties", "android/src", "src", "react-native.config.js", "README.md"],
+  "peerDependencies": {"react": ">=17", "react-native": ">=0.71"},
+  "license": "MIT"
+}
