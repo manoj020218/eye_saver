@@ -120,6 +120,12 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    implementation project(':eye-saver-child-session')
+    implementation project(':eye-saver-device-guard')
+    implementation project(':eye-saver-face-distance-monitor')
+    implementation project(':eye-saver-face-verification-core')
+    implementation project(':eye-saver-parent-auth')
+    implementation project(':react-native-face-proximity')
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")

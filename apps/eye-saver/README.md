@@ -11,6 +11,7 @@ React Native 0.82 Android app that composes the local Eye Saver native modules.
 - Full-screen break UI and parent-PIN exit.
 - Optional post-expiry restriction for parent-selected apps, leaving unselected apps such as Phone available.
 - Optional foreground-only hardware proximity warning.
+- Calibrated CameraX/ML Kit face-distance warning with a native cross-app banner.
 - Encrypted face-template readiness check.
 
 The CameraX/TFLite face-embedding adapter is intentionally the next milestone. The app never performs secret background camera capture.

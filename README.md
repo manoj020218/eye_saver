@@ -111,6 +111,7 @@ The final parental-control app can be composed from these small React Native And
 | `react-native-face-proximity` | Optional near/far warning from the hardware proximity sensor |
 | `@eye-saver/child-session` | Persistent, low-power screen-on usage timer with warning/expiry timestamps |
 | `@eye-saver/device-guard` | Device Admin lock, break screen, and Device Owner enforcement primitives |
+| `@eye-saver/face-distance-monitor` | Calibrated CameraX/ML Kit approximate face-distance monitoring and warning overlay |
 | `@eye-saver/face-verification-core` | Android Keystore-encrypted face embeddings and on-device comparison |
 | `@eye-saver/parent-auth` | Keystore-backed, rate-limited parent PIN verification |
 

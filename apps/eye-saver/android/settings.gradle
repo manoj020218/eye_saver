@@ -3,4 +3,16 @@ plugins { id("com.facebook.react.settings") }
 extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
 rootProject.name = 'com.eyesaver.app'
 include ':app'
+include ':eye-saver-child-session'
+project(':eye-saver-child-session').projectDir = file('../../../packages/child-session/android')
+include ':eye-saver-device-guard'
+project(':eye-saver-device-guard').projectDir = file('../../../packages/device-guard/android')
+include ':eye-saver-face-distance-monitor'
+project(':eye-saver-face-distance-monitor').projectDir = file('../../../packages/face-distance-monitor/android')
+include ':eye-saver-face-verification-core'
+project(':eye-saver-face-verification-core').projectDir = file('../../../packages/face-verification-core/android')
+include ':eye-saver-parent-auth'
+project(':eye-saver-parent-auth').projectDir = file('../../../packages/parent-auth/android')
+include ':react-native-face-proximity'
+project(':react-native-face-proximity').projectDir = file('../../../android')
 includeBuild('../../../node_modules/@react-native/gradle-plugin')

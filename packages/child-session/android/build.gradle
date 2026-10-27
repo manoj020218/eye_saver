@@ -11,6 +11,7 @@ buildscript {
 
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+layout.buildDirectory.set(new File(System.getProperty('java.io.tmpdir'), 'eye-saver-child-session-build'))
 
 if (project != rootProject) {
   layout.buildDirectory.set(new File(System.getProperty('java.io.tmpdir'), 'eye-saver-child-session-build'))

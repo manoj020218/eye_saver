@@ -8,6 +8,7 @@ buildscript {
 }
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+layout.buildDirectory.set(new File(System.getProperty('java.io.tmpdir'), 'eye-saver-device-guard-build'))
 
 // Keep host-app builds away from npm workspace junction outputs, which can inherit
 // unusable ACLs on Windows after an elevated Gradle invocation.

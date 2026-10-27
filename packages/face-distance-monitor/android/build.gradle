@@ -1,0 +1,41 @@
+buildscript {
+  def kotlinVersion = rootProject.ext.has('kotlinVersion') ? rootProject.ext.get('kotlinVersion') : project.findProperty('EyeSaver_kotlinVersion') ?: '2.1.20'
+  repositories { google(); mavenCentral() }
+  dependencies {
+    if (project == rootProject) { classpath 'com.android.tools.build:gradle:8.5.2' }
+    classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
+  }
+}
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+layout.buildDirectory.set(new File(System.getProperty('java.io.tmpdir'), 'eye-saver-face-distance-monitor-build'))
+
+android {
+  namespace 'com.eyesaver.facedistance'
+  compileSdkVersion rootProject.ext.has('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
+  defaultConfig {
+    minSdkVersion rootProject.ext.has('minSdkVersion') ? rootProject.ext.minSdkVersion : 24
+    targetSdkVersion rootProject.ext.has('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36
+  }
+  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+  kotlinOptions { jvmTarget = '17' }
+}
+
+repositories { google(); mavenCentral() }
+
+dependencies {
+  def hostPackage = [
+    new File(projectDir, '../../../react-native/package.json'),
+    new File(projectDir, '../../../node_modules/react-native/package.json'),
+    new File(projectDir, '../../react-native/package.json')
+  ].find { it.exists() }
+  def detectedVersion = hostPackage != null ? new groovy.json.JsonSlurper().parseText(hostPackage.text).version : null
+  def rnVersion = project.findProperty('EyeSaver_reactNativeVersion') ?: detectedVersion ?: '0.82.1'
+  compileOnly "com.facebook.react:react-android:$rnVersion"
+  implementation "org.jetbrains.kotlin:kotlin-stdlib"
+  implementation "androidx.camera:camera-core:1.6.2"
+  implementation "androidx.camera:camera-camera2:1.6.2"
+  implementation "androidx.camera:camera-lifecycle:1.6.2"
+  implementation "androidx.lifecycle:lifecycle-runtime:2.11.0"
+  implementation "com.google.mlkit:face-detection:16.1.7"
+}

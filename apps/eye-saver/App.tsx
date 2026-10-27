@@ -36,10 +36,24 @@ import {
   type LaunchableApp,
 } from '@eye-saver/device-guard';
 import {isFaceEnrolled} from '@eye-saver/face-verification-core';
+import {
+  getFaceDistanceCalibration,
+  getFaceDistanceCapabilities,
+  getFaceDistanceState,
+  onFaceDistanceEvent,
+  requestFaceDistanceCameraPermission,
+  startFaceDistanceCalibration,
+  startFaceDistanceMonitor,
+  stopFaceDistanceMonitor,
+  type FaceDistanceCalibration,
+  type FaceDistanceCapabilities,
+  type FaceDistanceSnapshot,
+} from '@eye-saver/face-distance-monitor';
 import {getParentAuthStatus, setParentPin, verifyParentPin} from '@eye-saver/parent-auth';
-import {FaceProximity, useProximityAlert, type ProximityCapabilities} from 'react-native-face-proximity';
+import {FaceProximity, useProximityAlert, type ProximityCapabilities} from '../../src';
 
 type Screen = 'loading' | 'setup' | 'login' | 'dashboard' | 'child';
+const DISTANCE_PROFILE = 'child-1';
 
 const EMPTY_SESSION: ChildSessionSnapshot = {
   eventType: 'state', state: 'idle', sessionId: null, durationMs: 0,
@@ -52,6 +66,19 @@ const EMPTY_GUARD: DeviceGuardCapabilities = {
   isAdminActive: false, isDeviceOwner: false, usageAccessGranted: false,
   canSuspendPackages: false, isLockTaskPermitted: false, canDrawOverlays: false,
   canWriteSystemGrayscale: false,
+};
+const EMPTY_DISTANCE_CAPABILITIES: FaceDistanceCapabilities = {
+  androidSupported: true, frontCameraAvailable: false, cameraPermissionGranted: false,
+  overlayPermissionGranted: false, minimumSdk: 24, estimationModel: 'calibrated-inter-eye-ratio',
+};
+const EMPTY_DISTANCE_CALIBRATION: FaceDistanceCalibration = {
+  calibrated: false, profileId: DISTANCE_PROFILE, knownDistanceCm: 0,
+  referenceEyeDistancePx: 0, calibratedAtMs: 0,
+};
+const EMPTY_DISTANCE_STATE: FaceDistanceSnapshot = {
+  eventType: 'state', mode: 'idle', active: false, profileId: null, distanceCm: null,
+  thresholdCm: 25, clearThresholdCm: 30, tooClose: false, samplesCollected: 0,
+  samplesRequired: 0, lastAlertAtMs: 0, timestampMs: 0,
 };
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
 const clock = (timestamp: number) => timestamp > 0 ? new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '—';
@@ -81,6 +108,12 @@ function AppContent() {
   const [proximityEnabled, setProximityEnabled] = useState(false);
   const [launchableApps, setLaunchableApps] = useState<LaunchableApp[]>([]);
   const [restrictedPackages, setRestrictedPackageState] = useState<string[]>([]);
+  const [distanceCapabilities, setDistanceCapabilities] = useState<FaceDistanceCapabilities>(EMPTY_DISTANCE_CAPABILITIES);
+  const [distanceCalibration, setDistanceCalibration] = useState<FaceDistanceCalibration>(EMPTY_DISTANCE_CALIBRATION);
+  const [distanceState, setDistanceState] = useState<FaceDistanceSnapshot>(EMPTY_DISTANCE_STATE);
+  const [distanceEnabled, setDistanceEnabled] = useState(false);
+  const [distanceThresholdCm, setDistanceThresholdCm] = useState(25);
+  const [distanceIntervalMs, setDistanceIntervalMs] = useState(1500);
   const [, redrawClock] = useState(0);
 
   useProximityAlert({
@@ -92,15 +125,19 @@ function AppContent() {
   });
 
   const refreshCapabilities = useCallback(async () => {
-    const [nextGuard, enrolled, proximityInfo, apps, selectedPackages] = await Promise.all([
+    const [nextGuard, enrolled, proximityInfo, apps, selectedPackages, nextDistanceCapabilities, calibration, nextDistanceState] = await Promise.all([
       getDeviceGuardCapabilities(), isFaceEnrolled('child-1'), FaceProximity.getCapabilities(),
-      getLaunchableApps(), getRestrictedPackages(),
+      getLaunchableApps(), getRestrictedPackages(), getFaceDistanceCapabilities(),
+      getFaceDistanceCalibration(DISTANCE_PROFILE), getFaceDistanceState(),
     ]);
     setGuard(nextGuard);
     setFaceEnrolled(enrolled);
     setProximity(proximityInfo);
     setLaunchableApps(apps);
     setRestrictedPackageState(selectedPackages);
+    setDistanceCapabilities(nextDistanceCapabilities);
+    setDistanceCalibration(calibration);
+    setDistanceState(nextDistanceState);
   }, []);
 
   const bootstrap = useCallback(async () => {
@@ -111,6 +148,7 @@ function AppContent() {
       if (activeSession.state === 'active' || activeSession.state === 'paused' || activeSession.state === 'expired') {
         setScreen('child');
         if (activeSession.state === 'expired') {
+          await stopFaceDistanceMonitor();
           await enforceExpiredBreak(activeSession.timestampMs);
         } else {
           await stopSelectiveGuard();
@@ -133,6 +171,7 @@ function AppContent() {
         if (event.eventType === 'warning') setMessage(`Break starts soon. Warning at ${clock(event.timestampMs)}.`);
         if (event.eventType === 'expired') {
           setScreen('child');
+          stopFaceDistanceMonitor().catch(() => undefined);
           enforceExpiredBreak(event.timestampMs)
             .catch(error => setMessage(errorText(error)));
         }
@@ -140,6 +179,7 @@ function AppContent() {
           setMessage(`Random face check requested at ${clock(event.verificationRequestedAtMs)}.`);
         }
         if (event.eventType === 'stopped') {
+          stopFaceDistanceMonitor().catch(() => undefined);
           setSession(EMPTY_SESSION);
           setPin('');
           setScreen('login');
@@ -148,6 +188,28 @@ function AppContent() {
     } catch (error) { setMessage(errorText(error)); }
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    let unsubscribe: () => void = () => {};
+    try {
+      unsubscribe = onFaceDistanceEvent(event => {
+        setDistanceState(event);
+        if (event.eventType === 'calibration_progress') {
+          setMessage(`Keep one face straight at 35 cm: ${event.samplesCollected}/${event.samplesRequired}.`);
+        }
+        if (event.eventType === 'calibration_complete') {
+          setDistanceEnabled(true);
+          setMessage('Face-distance calibration complete. Camera distance warning is ready.');
+          refreshCapabilities().catch(() => undefined);
+        }
+        if (event.eventType === 'too_close') {
+          setMessage(`Too close at ${clock(event.timestampMs)}: approximately ${Math.round(event.distanceCm ?? 0)} cm.`);
+        }
+        if (event.eventType === 'camera_error') setMessage(event.message ?? 'Front camera monitoring stopped.');
+      });
+    } catch (error) { setMessage(errorText(error)); }
+    return unsubscribe;
+  }, [refreshCapabilities]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', state => {
@@ -189,6 +251,7 @@ function AppContent() {
       setPin('');
       if (target === 'stop') {
         await stopChildSession();
+        await stopFaceDistanceMonitor();
         await stopSelectiveGuard();
         await dismissBreakScreen();
         setSession(EMPTY_SESSION);
@@ -211,7 +274,20 @@ function AppContent() {
         setMessage('Allow Usage access, return to Eye Saver, then press Start again. This is required only for selected-app restrictions.');
         return;
       }
+      if (distanceEnabled && !distanceCapabilities.cameraPermissionGranted) {
+        const granted = await requestFaceDistanceCameraPermission();
+        await refreshCapabilities();
+        if (!granted) {
+          setMessage('Camera permission is required for face-distance warnings.');
+          return;
+        }
+      }
+      if (distanceEnabled && !distanceCalibration.calibrated) {
+        setMessage('Calibrate face distance at 35 cm before enabling camera distance warnings.');
+        return;
+      }
       await requestNotificationPermission();
+      await stopFaceDistanceMonitor();
       await stopSelectiveGuard();
       await dismissBreakScreen();
       await startChildSession({
@@ -219,9 +295,41 @@ function AppContent() {
         warningBeforeMs: Math.min(2 * 60_000, durationMinutes * 30_000),
         blockOnExpire: true,
       });
+      if (distanceEnabled) {
+        try {
+          await startFaceDistanceMonitor({
+            profileId: DISTANCE_PROFILE,
+            thresholdCm: distanceThresholdCm,
+            clearThresholdCm: distanceThresholdCm + 5,
+            intervalMs: distanceIntervalMs,
+            consecutiveNearSamples: 3,
+            smoothingWindow: 5,
+            showOverlay: true,
+          });
+        } catch (error) {
+          await stopChildSession();
+          throw error;
+        }
+      }
       const now = Date.now();
       setSession({...EMPTY_SESSION, state: 'active', durationMs: durationMinutes * 60_000, remainingMs: durationMinutes * 60_000, timestampMs: now, startedAtMs: now});
       setScreen('child');
+    } catch (error) { setMessage(errorText(error)); }
+    finally { setBusy(false); }
+  }
+
+  async function calibrateFaceDistance() {
+    setBusy(true); setMessage('');
+    try {
+      let granted = distanceCapabilities.cameraPermissionGranted;
+      if (!granted) granted = await requestFaceDistanceCameraPermission();
+      await refreshCapabilities();
+      if (!granted) {
+        setMessage('Camera permission was not granted. Calibration cannot start.');
+        return;
+      }
+      await startFaceDistanceCalibration({profileId: DISTANCE_PROFILE, knownDistanceCm: 35, sampleCount: 15});
+      setMessage('Hold the phone 35 cm from one face, look straight at it, and keep still for a few seconds.');
     } catch (error) { setMessage(errorText(error)); }
     finally { setBusy(false); }
   }
@@ -256,6 +364,7 @@ function AppContent() {
         <Text style={styles.timer}>{session.state === 'expired' ? 'BREAK' : remainingLabel}</Text>
         <Text style={styles.childTitle}>{session.state === 'expired' ? 'Time to rest your eyes' : 'Screen time remaining'}</Text>
         <Text style={styles.muted}>{session.isScreenOn ? 'Active screen time is being counted' : 'Screen is off — timer paused automatically'}</Text>
+        {distanceEnabled && distanceState.distanceCm != null && <Text style={styles.distanceReading}>Face distance: ~{Math.round(distanceState.distanceCm)} cm</Text>}
         <View style={styles.rule} />
         <Text style={styles.label}>Parent PIN to end child mode</Text>
         <TextInput value={pin} onChangeText={setPin} style={styles.pinInput} secureTextEntry keyboardType="number-pad" maxLength={12} placeholder="••••" placeholderTextColor="#53635d" />
@@ -301,8 +410,31 @@ function AppContent() {
         <View style={styles.switchRow}><View style={styles.flex}><Text style={styles.rowTitle}>{proximity.available ? proximity.name ?? 'Proximity sensor' : 'Sensor unavailable'}</Text><Text style={styles.rowNote}>{proximity.isLikelyBinary ? 'Near/far warning; exact centimetres are unavailable' : 'Distance threshold warning while this app is visible'}</Text></View><Switch value={proximityEnabled} onValueChange={setProximityEnabled} disabled={!proximity.available} trackColor={{true: '#2f8068'}} thumbColor="#d8fff2" /></View>
       </Card>
 
+      <Card title="Camera face-distance warning">
+        <StatusRow
+          label="Front camera permission"
+          ready={distanceCapabilities.cameraPermissionGranted}
+          action="Allow"
+          note="Frames are processed on-device and are not saved"
+          onPress={async () => { await requestFaceDistanceCameraPermission(); await refreshCapabilities(); }}
+        />
+        <StatusRow
+          label="35 cm calibration"
+          ready={distanceCalibration.calibrated}
+          action="Required"
+          note={distanceCalibration.calibrated ? `Calibrated at ${clock(distanceCalibration.calibratedAtMs)}` : 'Place one forward-facing face 35 cm from the phone'}
+        />
+        <PrimaryButton label={distanceState.mode === 'calibrating' ? `Calibrating ${distanceState.samplesCollected}/${distanceState.samplesRequired}` : 'Calibrate at 35 cm'} onPress={calibrateFaceDistance} disabled={busy || distanceState.mode === 'calibrating'} />
+        <View style={styles.switchRow}><View style={styles.flex}><Text style={styles.rowTitle}>Enable during child mode</Text><Text style={styles.rowNote}>Android shows its camera privacy indicator and an ongoing notification</Text></View><Switch value={distanceEnabled} onValueChange={setDistanceEnabled} disabled={!distanceCalibration.calibrated} trackColor={{true: '#2f8068'}} thumbColor="#d8fff2" /></View>
+        <Text style={styles.optionLabel}>Too-close threshold</Text>
+        <View style={styles.chips}>{[20, 25, 30].map(value => <Pressable key={value} onPress={() => setDistanceThresholdCm(value)} style={[styles.chip, distanceThresholdCm === value && styles.chipActive]}><Text style={[styles.chipText, distanceThresholdCm === value && styles.chipTextActive]}>{value} cm</Text></Pressable>)}</View>
+        <Text style={styles.optionLabel}>Analysis interval</Text>
+        <View style={styles.chips}>{[1000, 1500, 3000].map(value => <Pressable key={value} onPress={() => setDistanceIntervalMs(value)} style={[styles.chip, distanceIntervalMs === value && styles.chipActive]}><Text style={[styles.chipText, distanceIntervalMs === value && styles.chipTextActive]}>{value / 1000}s</Text></Pressable>)}</View>
+        <Text style={styles.rowNote}>Approximate only: head angle, camera crop and different faces affect the estimate. The warning requires three consecutive near readings and clears 5 cm beyond the selected threshold.</Text>
+      </Card>
+
       <PrimaryButton label={`Start ${durationMinutes}-minute child session`} onPress={startSession} disabled={busy} />
-      <Text style={styles.disclosure}>Child mode uses a visible Android notification and an explicitly granted break overlay. Android does not allow a normal app to turn YouTube truly grayscale; dedicated Device Owner mode can suspend it instead. Camera verification will never run secretly in the background.</Text>
+      <Text style={styles.disclosure}>Child mode uses visible Android notifications and explicitly granted overlays. Camera distance monitoring is parent-started, shows Android's privacy indicator, and processes frames locally without saving them. Android does not allow a normal app to turn YouTube truly grayscale; dedicated Device Owner mode can suspend it instead.</Text>
       {!!message && <Text style={styles.error}>{message}</Text>}
     </ScrollView>
   </SafeAreaView>;
@@ -329,5 +461,5 @@ function PrimaryButton({label, onPress, disabled}: {label: string; onPress: () =
 function StatusRow({label, ready, action, note, onPress}: {label: string; ready: boolean; action?: string; note?: string; onPress?: () => void | Promise<unknown>}) { return <View style={styles.statusRow}><View style={styles.flex}><Text style={styles.rowTitle}>{label}</Text>{note && <Text style={styles.rowNote}>{note}</Text>}</View><Pressable disabled={!onPress || ready} onPress={() => {Promise.resolve(onPress?.()).catch(error => console.warn(error));}} style={[styles.badge, ready ? styles.ready : styles.pending]}><Text style={styles.badgeText}>{ready ? 'Ready' : action ?? 'Optional'}</Text></Pressable></View>; }
 
 const styles = StyleSheet.create({
-  page: {flex: 1, backgroundColor: '#07120f'}, childPage: {flex: 1, backgroundColor: '#07120f'}, center: {flex: 1, backgroundColor: '#07120f', alignItems: 'center', justifyContent: 'center', gap: 16}, scroll: {padding: 22, paddingBottom: 48}, authWrap: {flex: 1, justifyContent: 'center', padding: 28}, childContent: {flex: 1, justifyContent: 'center', alignItems: 'stretch', padding: 28}, headerRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}, heading: {color: '#effff9', fontSize: 38, fontWeight: '800', letterSpacing: -1}, eyebrow: {color: '#5fe0b7', fontSize: 12, fontWeight: '800', letterSpacing: 2, marginBottom: 8}, subtitle: {color: '#9bb0a9', fontSize: 16, lineHeight: 23, marginTop: 8, marginBottom: 24}, muted: {color: '#9bb0a9', fontSize: 15, lineHeight: 22, textAlign: 'center'}, lockLink: {color: '#5fe0b7', fontWeight: '700', padding: 12}, card: {backgroundColor: '#10211b', borderColor: '#1c392f', borderWidth: 1, borderRadius: 20, padding: 18, marginBottom: 16}, cardTitle: {color: '#effff9', fontSize: 18, fontWeight: '700', marginBottom: 12}, statusRow: {flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomColor: '#1b342c', borderBottomWidth: StyleSheet.hairlineWidth}, switchRow: {flexDirection: 'row', alignItems: 'center', gap: 12}, flex: {flex: 1}, rowTitle: {color: '#e2f5ee', fontSize: 15, fontWeight: '600'}, rowNote: {color: '#849a92', fontSize: 12, lineHeight: 17, marginTop: 3}, badge: {paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999}, ready: {backgroundColor: '#205c49'}, pending: {backgroundColor: '#3b3420'}, badgeText: {color: '#eafff7', fontSize: 12, fontWeight: '700'}, chips: {flexDirection: 'row', flexWrap: 'wrap', gap: 9}, chip: {borderColor: '#2a493e', borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10}, chipActive: {backgroundColor: '#5fe0b7', borderColor: '#5fe0b7'}, chipText: {color: '#b4c8c1', fontWeight: '700'}, chipTextActive: {color: '#07120f'}, primary: {backgroundColor: '#5fe0b7', minHeight: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, marginTop: 12}, primaryDim: {opacity: 0.45}, primaryText: {color: '#07120f', fontSize: 16, fontWeight: '800'}, disclosure: {color: '#70867e', fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 14}, pinInput: {backgroundColor: '#10211b', borderColor: '#2a493e', borderWidth: 1, borderRadius: 14, color: '#effff9', fontSize: 22, letterSpacing: 5, paddingHorizontal: 18, marginTop: 12, minHeight: 56}, error: {color: '#ff9b91', fontSize: 14, lineHeight: 20, marginTop: 14, textAlign: 'center'}, timer: {color: '#effff9', fontSize: 72, fontWeight: '200', textAlign: 'center', letterSpacing: -3, marginVertical: 18}, childTitle: {color: '#dff8ef', fontSize: 23, fontWeight: '700', textAlign: 'center', marginBottom: 8}, rule: {height: 1, backgroundColor: '#1c392f', marginVertical: 30}, label: {color: '#9bb0a9', fontSize: 13, fontWeight: '700'},
+  page: {flex: 1, backgroundColor: '#07120f'}, childPage: {flex: 1, backgroundColor: '#07120f'}, center: {flex: 1, backgroundColor: '#07120f', alignItems: 'center', justifyContent: 'center', gap: 16}, scroll: {padding: 22, paddingBottom: 48}, authWrap: {flex: 1, justifyContent: 'center', padding: 28}, childContent: {flex: 1, justifyContent: 'center', alignItems: 'stretch', padding: 28}, headerRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}, heading: {color: '#effff9', fontSize: 38, fontWeight: '800', letterSpacing: -1}, eyebrow: {color: '#5fe0b7', fontSize: 12, fontWeight: '800', letterSpacing: 2, marginBottom: 8}, subtitle: {color: '#9bb0a9', fontSize: 16, lineHeight: 23, marginTop: 8, marginBottom: 24}, muted: {color: '#9bb0a9', fontSize: 15, lineHeight: 22, textAlign: 'center'}, distanceReading: {color: '#5fe0b7', fontSize: 16, fontWeight: '700', textAlign: 'center', marginTop: 12}, lockLink: {color: '#5fe0b7', fontWeight: '700', padding: 12}, card: {backgroundColor: '#10211b', borderColor: '#1c392f', borderWidth: 1, borderRadius: 20, padding: 18, marginBottom: 16}, cardTitle: {color: '#effff9', fontSize: 18, fontWeight: '700', marginBottom: 12}, statusRow: {flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomColor: '#1b342c', borderBottomWidth: StyleSheet.hairlineWidth}, switchRow: {flexDirection: 'row', alignItems: 'center', gap: 12}, flex: {flex: 1}, rowTitle: {color: '#e2f5ee', fontSize: 15, fontWeight: '600'}, rowNote: {color: '#849a92', fontSize: 12, lineHeight: 17, marginTop: 3}, badge: {paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999}, ready: {backgroundColor: '#205c49'}, pending: {backgroundColor: '#3b3420'}, badgeText: {color: '#eafff7', fontSize: 12, fontWeight: '700'}, chips: {flexDirection: 'row', flexWrap: 'wrap', gap: 9}, chip: {borderColor: '#2a493e', borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10}, chipActive: {backgroundColor: '#5fe0b7', borderColor: '#5fe0b7'}, chipText: {color: '#b4c8c1', fontWeight: '700'}, chipTextActive: {color: '#07120f'}, optionLabel: {color: '#b9cec7', fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 9}, primary: {backgroundColor: '#5fe0b7', minHeight: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, marginTop: 12}, primaryDim: {opacity: 0.45}, primaryText: {color: '#07120f', fontSize: 16, fontWeight: '800'}, disclosure: {color: '#70867e', fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 14}, pinInput: {backgroundColor: '#10211b', borderColor: '#2a493e', borderWidth: 1, borderRadius: 14, color: '#effff9', fontSize: 22, letterSpacing: 5, paddingHorizontal: 18, marginTop: 12, minHeight: 56}, error: {color: '#ff9b91', fontSize: 14, lineHeight: 20, marginTop: 14, textAlign: 'center'}, timer: {color: '#effff9', fontSize: 72, fontWeight: '200', textAlign: 'center', letterSpacing: -3, marginVertical: 18}, childTitle: {color: '#dff8ef', fontSize: 23, fontWeight: '700', textAlign: 'center', marginBottom: 8}, rule: {height: 1, backgroundColor: '#1c392f', marginVertical: 30}, label: {color: '#9bb0a9', fontSize: 13, fontWeight: '700'},
 });

@@ -1,0 +1,21 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.CAMERA" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+  <uses-feature android:name="android.hardware.camera.front" android:required="false" />
+
+  <application>
+    <service
+      android:name=".FaceDistanceService"
+      android:exported="false"
+      android:foregroundServiceType="camera" />
+    <receiver
+      android:name=".ChildSessionFaceDistanceReceiver"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="com.eyesaver.childsession.EVENT" />
+      </intent-filter>
+    </receiver>
+  </application>
+</manifest>

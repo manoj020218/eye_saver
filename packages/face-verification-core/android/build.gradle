@@ -8,6 +8,7 @@ buildscript {
 }
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+layout.buildDirectory.set(new File(System.getProperty('java.io.tmpdir'), 'eye-saver-face-verification-core-build'))
 android {
   namespace 'com.eyesaver.faceverification'
   compileSdkVersion rootProject.ext.has('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 35
