@@ -9,6 +9,7 @@ React Native 0.82 Android app that composes the local Eye Saver native modules.
 - Parent-selected 1/20/30/45-minute child sessions.
 - Screen-on-aware timer, persistent notification, warning and expiry timestamps.
 - Full-screen break UI and parent-PIN exit.
+- Optional post-expiry restriction for parent-selected apps, leaving unselected apps such as Phone available.
 - Optional foreground-only hardware proximity warning.
 - Encrypted face-template readiness check.
 

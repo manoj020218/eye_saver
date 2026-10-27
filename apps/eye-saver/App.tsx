@@ -56,6 +56,17 @@ const EMPTY_GUARD: DeviceGuardCapabilities = {
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
 const clock = (timestamp: number) => timestamp > 0 ? new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '—';
 
+async function enforceExpiredBreak(timestampMs: number) {
+  const selectedPackages = await getRestrictedPackages();
+  if (selectedPackages.length > 0) {
+    await dismissBreakScreen();
+    await startSelectiveGuard(1500);
+  } else {
+    await stopSelectiveGuard();
+    await showBreakScreen({message: 'Time for an eye and screen break', triggeredAtMs: timestampMs});
+  }
+}
+
 function AppContent() {
   const [screen, setScreen] = useState<Screen>('loading');
   const [pin, setPin] = useState('');
@@ -100,7 +111,10 @@ function AppContent() {
       if (activeSession.state === 'active' || activeSession.state === 'paused' || activeSession.state === 'expired') {
         setScreen('child');
         if (activeSession.state === 'expired') {
-          await showBreakScreen({message: 'Time for an eye and screen break', triggeredAtMs: activeSession.timestampMs});
+          await enforceExpiredBreak(activeSession.timestampMs);
+        } else {
+          await stopSelectiveGuard();
+          await dismissBreakScreen();
         }
       } else setScreen(auth.configured ? 'login' : 'setup');
     } catch (error) {
@@ -119,7 +133,7 @@ function AppContent() {
         if (event.eventType === 'warning') setMessage(`Break starts soon. Warning at ${clock(event.timestampMs)}.`);
         if (event.eventType === 'expired') {
           setScreen('child');
-          showBreakScreen({message: 'Time for an eye and screen break', triggeredAtMs: event.timestampMs})
+          enforceExpiredBreak(event.timestampMs)
             .catch(error => setMessage(errorText(error)));
         }
         if (event.eventType === 'verification_required') {
@@ -198,12 +212,13 @@ function AppContent() {
         return;
       }
       await requestNotificationPermission();
+      await stopSelectiveGuard();
+      await dismissBreakScreen();
       await startChildSession({
         durationMs: durationMinutes * 60_000,
         warningBeforeMs: Math.min(2 * 60_000, durationMinutes * 30_000),
         blockOnExpire: true,
       });
-      if (restrictedPackages.length > 0) await startSelectiveGuard(1500);
       const now = Date.now();
       setSession({...EMPTY_SESSION, state: 'active', durationMs: durationMinutes * 60_000, remainingMs: durationMinutes * 60_000, timestampMs: now, startedAtMs: now});
       setScreen('child');
@@ -269,8 +284,8 @@ function AppContent() {
         <View style={styles.chips}>{[1, 20, 30, 45].map(value => <Pressable key={value} onPress={() => setDurationMinutes(value)} style={[styles.chip, durationMinutes === value && styles.chipActive]}><Text style={[styles.chipText, durationMinutes === value && styles.chipTextActive]}>{value === 1 ? '1 min test' : `${value} min`}</Text></Pressable>)}</View>
       </Card>
 
-      <Card title="Apps restricted during child mode">
-        <Text style={styles.rowNote}>Choose only the apps Eye Saver should cover. Leave Phone unselected so calls remain available. Play Store can be selected here, but tamper-proof install blocking requires Device Owner.</Text>
+      <Card title="Apps blocked after screen time ends">
+        <Text style={styles.rowNote}>These apps remain usable while the timer is running and are blocked only after it reaches zero. Leave Phone unselected so calls remain available. Tamper-proof Play Store blocking requires Device Owner.</Text>
         {launchableApps.map(app => <View key={app.packageName} style={styles.switchRow}>
           <View style={styles.flex}><Text style={styles.rowTitle}>{app.label}</Text><Text style={styles.rowNote}>{app.packageName}</Text></View>
           <Switch

@@ -18,6 +18,6 @@ await setRestrictedPackages(['com.google.android.youtube', 'com.android.vending'
 await startSelectiveGuard(1500);
 ```
 
-The selection is stored natively and the child-session event receiver restores the monitor when a session starts or resumes. It stops on pause, expiry, or session end. A longer interval reduces polling and battery use but makes the overlay appear later.
+The selection is stored natively. In the Eye Saver app, selected apps remain usable while screen time is available; the child-session event receiver starts the monitor only when the timer expires. Starting, resuming, pausing, or ending a session stops the monitor and clears its overlay. A longer interval reduces polling and battery use but makes the post-expiry overlay appear later.
 
 This is best-effort on a shared device: system UI can appear above app overlays, Picture-in-Picture behavior varies by video app, and a user can revoke Usage/overlay access or uninstall the app. Device Owner mode should use `setPackagesSuspended()` and uninstall restrictions for tamper-resistant control. Keep the dialer unselected if calls must remain available.

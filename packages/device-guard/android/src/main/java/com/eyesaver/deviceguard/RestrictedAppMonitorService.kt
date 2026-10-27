@@ -171,8 +171,8 @@ class RestrictedAppMonitorService : Service() {
       else @Suppress("DEPRECATION") Notification.Builder(this)
     return builder
       .setSmallIcon(applicationInfo.icon.takeIf { it != 0 } ?: android.R.drawable.ic_lock_lock)
-      .setContentTitle("Selected app guard is active")
-      .setContentText("Parent-selected apps are restricted during child mode")
+      .setContentTitle("Screen-time break is active")
+      .setContentText("Parent-selected apps are blocked until the parent ends child mode")
       .setOngoing(true)
       .setOnlyAlertOnce(true)
       .setContentIntent(pending)
