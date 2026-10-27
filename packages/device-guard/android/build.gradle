@@ -9,6 +9,12 @@ buildscript {
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
+// Keep host-app builds away from npm workspace junction outputs, which can inherit
+// unusable ACLs on Windows after an elevated Gradle invocation.
+if (project != rootProject) {
+  layout.buildDirectory.set(new File(System.getProperty('java.io.tmpdir'), 'eye-saver-device-guard-build'))
+}
+
 android {
   namespace 'com.eyesaver.deviceguard'
   compileSdkVersion rootProject.ext.has('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 35

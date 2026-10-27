@@ -24,6 +24,7 @@ import {
   dismissBreakScreen,
   getDeviceGuardCapabilities,
   requestDeviceAdmin,
+  requestOverlayPermission,
   requestUsageAccess,
   showBreakScreen,
   type DeviceGuardCapabilities,
@@ -37,10 +38,12 @@ type Screen = 'loading' | 'setup' | 'login' | 'dashboard' | 'child';
 const EMPTY_SESSION: ChildSessionSnapshot = {
   eventType: 'state', state: 'idle', sessionId: null, durationMs: 0,
   usedMs: 0, remainingMs: 0, startedAtMs: 0, timestampMs: 0, isScreenOn: true,
+  blockOnExpire: false,
 };
 const EMPTY_GUARD: DeviceGuardCapabilities = {
   isAdminActive: false, isDeviceOwner: false, usageAccessGranted: false,
-  canSuspendPackages: false, isLockTaskPermitted: false, canWriteSystemGrayscale: false,
+  canSuspendPackages: false, isLockTaskPermitted: false, canDrawOverlays: false,
+  canWriteSystemGrayscale: false,
 };
 const errorText = (error: unknown) => error instanceof Error ? error.message : String(error);
 const clock = (timestamp: number) => timestamp > 0 ? new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '—';
@@ -106,6 +109,11 @@ function AppContent() {
           showBreakScreen({message: 'Time for an eye and screen break', triggeredAtMs: event.timestampMs})
             .catch(error => setMessage(errorText(error)));
         }
+        if (event.eventType === 'stopped') {
+          setSession(EMPTY_SESSION);
+          setPin('');
+          setScreen('login');
+        }
       });
     } catch (error) { setMessage(errorText(error)); }
     return unsubscribe;
@@ -162,10 +170,16 @@ function AppContent() {
   async function startSession() {
     setBusy(true); setMessage('');
     try {
+      if (!guard.canDrawOverlays) {
+        await requestOverlayPermission();
+        setMessage('Enable "Display over other apps", return to Eye Saver, then press Start again. On Xiaomi, first tap EyeSaverApp in the list, then enable the switch.');
+        return;
+      }
       await requestNotificationPermission();
       await startChildSession({
         durationMs: durationMinutes * 60_000,
         warningBeforeMs: Math.min(2 * 60_000, durationMinutes * 30_000),
+        blockOnExpire: true,
       });
       const now = Date.now();
       setSession({...EMPTY_SESSION, state: 'active', durationMs: durationMinutes * 60_000, remainingMs: durationMinutes * 60_000, timestampMs: now, startedAtMs: now});
@@ -208,9 +222,10 @@ function AppContent() {
       <Text style={styles.subtitle}>Configure a safe session, then hand over the phone.</Text>
 
       <Card title="Protection readiness">
-        <StatusRow label="Device Admin lock" ready={guard.isAdminActive} action="Enable" onPress={requestDeviceAdmin} />
+        <StatusRow label="Break overlay" ready={guard.canDrawOverlays} action="Required" note="Blocks YouTube with a black break screen when time expires" onPress={requestOverlayPermission} />
+        <StatusRow label="Device Admin lock" ready={guard.isAdminActive} action="Enable" note="Optional extra lock; not sufficient if the child knows the device pattern" onPress={requestDeviceAdmin} />
         <StatusRow label="Usage access" ready={guard.usageAccessGranted} action="Allow" onPress={requestUsageAccess} />
-        <StatusRow label="Dedicated Device Owner" ready={guard.isDeviceOwner} />
+        <StatusRow label="Dedicated Device Owner" ready={guard.isDeviceOwner} note="Required for strong package suspension on a dedicated child phone" />
         <StatusRow label="Child face enrolled" ready={faceEnrolled} note="Camera/model adapter is the next milestone" />
       </Card>
 
@@ -223,7 +238,7 @@ function AppContent() {
       </Card>
 
       <PrimaryButton label={`Start ${durationMinutes}-minute child session`} onPress={startSession} disabled={busy} />
-      <Text style={styles.disclosure}>Child mode uses a visible Android notification. Camera verification will never run secretly in the background.</Text>
+      <Text style={styles.disclosure}>Child mode uses a visible Android notification and an explicitly granted break overlay. Android does not allow a normal app to turn YouTube truly grayscale; dedicated Device Owner mode can suspend it instead. Camera verification will never run secretly in the background.</Text>
       {!!message && <Text style={styles.error}>{message}</Text>}
     </ScrollView>
   </SafeAreaView>;

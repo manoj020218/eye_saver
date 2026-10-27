@@ -36,9 +36,11 @@ class ChildSessionModule(private val context: ReactApplicationContext) : ReactCo
   fun start(options: ReadableMap?, promise: Promise) {
     val durationMs = options.longValue("durationMs", 20 * 60_000L).coerceIn(10_000L, 24 * 60 * 60_000L)
     val warningBeforeMs = options.longValue("warningBeforeMs", 2 * 60_000L).coerceIn(0L, durationMs)
+    val blockOnExpire = options != null && options.hasKey("blockOnExpire") && !options.isNull("blockOnExpire") && options.getBoolean("blockOnExpire")
     val intent = command(ChildSessionService.ACTION_START)
       .putExtra("durationMs", durationMs)
       .putExtra("warningBeforeMs", warningBeforeMs)
+      .putExtra("blockOnExpire", blockOnExpire)
     try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
       else context.startService(intent)
@@ -53,7 +55,18 @@ class ChildSessionModule(private val context: ReactApplicationContext) : ReactCo
   @ReactMethod fun stop(promise: Promise) = send(ChildSessionService.ACTION_STOP, promise)
 
   @ReactMethod
-  fun getState(promise: Promise) { promise.resolve(ChildSessionService.stateMap(context)) }
+  fun getState(promise: Promise) {
+    if (ChildSessionService.shouldRestore(context)) {
+      try {
+        val restore = command(ChildSessionService.ACTION_RESTORE)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(restore)
+        else context.startService(restore)
+      } catch (_: Exception) {
+        // State remains readable; Android can retry the sticky service when allowed.
+      }
+    }
+    promise.resolve(ChildSessionService.stateMap(context))
+  }
 
   @ReactMethod
   fun getCapabilities(promise: Promise) {

@@ -6,6 +6,7 @@ export interface DeviceGuardCapabilities {
   usageAccessGranted: boolean;
   canSuspendPackages: boolean;
   isLockTaskPermitted: boolean;
+  canDrawOverlays: boolean;
   canWriteSystemGrayscale: false;
 }
 export interface BreakScreenOptions { message?: string; triggeredAtMs?: number }
@@ -18,6 +19,7 @@ const module = () => {
 export const getDeviceGuardCapabilities = (): Promise<DeviceGuardCapabilities> => module().getCapabilities();
 export const requestDeviceAdmin = (): Promise<boolean> => module().requestAdmin();
 export const requestUsageAccess = (): Promise<boolean> => module().requestUsageAccess();
+export const requestOverlayPermission = (): Promise<boolean> => module().requestOverlayPermission();
 export const lockDevice = (): Promise<boolean> => module().lockDevice();
 export const setPackagesSuspended = (packageNames: string[], suspended: boolean): Promise<string[]> => module().setPackagesSuspended(packageNames, suspended);
 export const startLockTask = (): Promise<boolean> => module().startLockTask();

@@ -32,6 +32,7 @@ class DeviceGuardModule(private val context: ReactApplicationContext) : ReactCon
     result.putBoolean("usageAccessGranted", hasUsageAccess())
     result.putBoolean("canSuspendPackages", owner && Build.VERSION.SDK_INT >= 24)
     result.putBoolean("isLockTaskPermitted", policy.isLockTaskPermitted(context.packageName))
+    result.putBoolean("canDrawOverlays", Settings.canDrawOverlays(context))
     result.putBoolean("canWriteSystemGrayscale", false)
     promise.resolve(result)
   }
@@ -50,6 +51,14 @@ class DeviceGuardModule(private val context: ReactApplicationContext) : ReactCon
   fun requestUsageAccess(promise: Promise) {
     val activity = context.currentActivity ?: return promise.reject("E_NO_ACTIVITY", "A visible Activity is required")
     activity.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.parse("package:${context.packageName}")))
+    promise.resolve(true)
+  }
+
+  @ReactMethod
+  fun requestOverlayPermission(promise: Promise) {
+    if (Settings.canDrawOverlays(context)) { promise.resolve(true); return }
+    val activity = context.currentActivity ?: return promise.reject("E_NO_ACTIVITY", "A visible Activity is required")
+    activity.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
     promise.resolve(true)
   }
 
@@ -95,15 +104,20 @@ class DeviceGuardModule(private val context: ReactApplicationContext) : ReactCon
 
   @ReactMethod
   fun showBreakScreen(options: ReadableMap?, promise: Promise) {
-    val activity = context.currentActivity ?: return promise.reject("E_NO_ACTIVITY", "A visible Activity is required")
     val message = if (options != null && options.hasKey("message") && !options.isNull("message")) options.getString("message") else null
     val timestamp = if (options != null && options.hasKey("triggeredAtMs") && !options.isNull("triggeredAtMs")) options.getDouble("triggeredAtMs").toLong() else System.currentTimeMillis()
-    activity.startActivity(Intent(activity, BreakActivity::class.java).putExtra("message", message).putExtra("triggeredAtMs", timestamp))
+    if (Settings.canDrawOverlays(context)) {
+      context.startService(BreakOverlayService.showIntent(context, message, timestamp))
+    } else {
+      val activity = context.currentActivity ?: return promise.reject("E_OVERLAY_REQUIRED", "Display-over-other-apps permission is required for background enforcement")
+      activity.startActivity(Intent(activity, BreakActivity::class.java).putExtra("message", message).putExtra("triggeredAtMs", timestamp))
+    }
     promise.resolve(true)
   }
 
   @ReactMethod
   fun dismissBreakScreen(promise: Promise) {
+    BreakOverlayService.dismiss(context)
     context.sendBroadcast(Intent(BreakActivity.ACTION_DISMISS).setPackage(context.packageName))
     promise.resolve(true)
   }

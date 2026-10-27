@@ -2,6 +2,10 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+// Keep generated app output in a fresh ignored directory when an earlier
+// elevated Windows build leaves the default module build folder unreadable.
+layout.buildDirectory.set(new File(System.getProperty("java.io.tmpdir"), "eye-saver-app-build"))
+
 /**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
@@ -76,6 +80,12 @@ android {
     ndkVersion rootProject.ext.ndkVersion
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
+
+    externalNativeBuild {
+        cmake {
+            buildStagingDirectory new File(System.getProperty("java.io.tmpdir"), "eye-saver-cxx-com.eyesaver.app")
+        }
+    }
 
     namespace "com.eyesaver.app"
     defaultConfig {

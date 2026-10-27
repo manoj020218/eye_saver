@@ -1,1 +1,8 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <provider
+      android:name=".ParentAuthProvider"
+      android:authorities="${applicationId}.eye_saver_parent_auth"
+      android:exported="false" />
+  </application>
+</manifest>

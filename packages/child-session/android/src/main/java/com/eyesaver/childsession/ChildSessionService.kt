@@ -26,12 +26,19 @@ class ChildSessionService : Service() {
     const val ACTION_PAUSE = "com.eyesaver.childsession.PAUSE"
     const val ACTION_RESUME = "com.eyesaver.childsession.RESUME"
     const val ACTION_STOP = "com.eyesaver.childsession.STOP"
+    const val ACTION_RESTORE = "com.eyesaver.childsession.RESTORE"
     const val EVENT_ACTION = "com.eyesaver.childsession.EVENT"
     private const val PREFS = "eye_saver_child_session"
     private const val ACTIVE_CHANNEL = "eye_saver_child_session_active"
     private const val ALERT_CHANNEL = "eye_saver_child_session_alert"
     private const val ACTIVE_NOTIFICATION = 8141
     private const val ALERT_NOTIFICATION = 8142
+
+    fun shouldRestore(context: Context): Boolean {
+      val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      val state = prefs.getString("state", "IDLE")
+      return state == "ACTIVE" || (state == "EXPIRED" && prefs.getBoolean("blockOnExpire", false))
+    }
 
     fun stateMap(context: Context, eventType: String? = null): WritableMap {
       val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -53,6 +60,7 @@ class ChildSessionService : Service() {
         putDouble("startedAtMs", prefs.getLong("startedAtMs", 0L).toDouble())
         putDouble("timestampMs", System.currentTimeMillis().toDouble())
         putBoolean("isScreenOn", screenOn)
+        putBoolean("blockOnExpire", prefs.getBoolean("blockOnExpire", false))
       }
     }
   }
@@ -83,10 +91,15 @@ class ChildSessionService : Service() {
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     when (intent?.action) {
-      ACTION_START -> startNew(intent.getLongExtra("durationMs", 20 * 60_000L), intent.getLongExtra("warningBeforeMs", 2 * 60_000L))
+      ACTION_START -> startNew(
+        intent.getLongExtra("durationMs", 20 * 60_000L),
+        intent.getLongExtra("warningBeforeMs", 2 * 60_000L),
+        intent.getBooleanExtra("blockOnExpire", false)
+      )
       ACTION_PAUSE -> pauseSession()
       ACTION_RESUME -> resumeSession()
       ACTION_STOP -> stopSession()
+      ACTION_RESTORE -> restoreSession()
       else -> restoreSession()
     }
     return START_STICKY
@@ -100,7 +113,7 @@ class ChildSessionService : Service() {
     super.onDestroy()
   }
 
-  private fun startNew(durationMs: Long, warningBeforeMs: Long) {
+  private fun startNew(durationMs: Long, warningBeforeMs: Long, blockOnExpire: Boolean) {
     prefs.edit()
       .putString("state", "ACTIVE")
       .putString("sessionId", UUID.randomUUID().toString())
@@ -110,6 +123,7 @@ class ChildSessionService : Service() {
       .putLong("activeSinceElapsed", if (power.isInteractive) SystemClock.elapsedRealtime() else 0L)
       .putLong("startedAtMs", System.currentTimeMillis())
       .putBoolean("warned", false)
+      .putBoolean("blockOnExpire", blockOnExpire)
       .apply()
     startForeground(ACTIVE_NOTIFICATION, activeNotification())
     emit("started")
@@ -122,6 +136,9 @@ class ChildSessionService : Service() {
       startForeground(ACTIVE_NOTIFICATION, activeNotification())
       if (power.isInteractive) prefs.edit().putLong("activeSinceElapsed", SystemClock.elapsedRealtime()).apply()
       schedule()
+    } else if (prefs.getString("state", "IDLE") == "EXPIRED" && prefs.getBoolean("blockOnExpire", false)) {
+      startForeground(ACTIVE_NOTIFICATION, blockingNotification())
+      emit("expired")
     } else stopSelf()
   }
 
@@ -145,7 +162,7 @@ class ChildSessionService : Service() {
 
   private fun stopSession() {
     checkpoint(null)
-    prefs.edit().putString("state", "IDLE").putLong("activeSinceElapsed", 0L).apply()
+    prefs.edit().putString("state", "IDLE").putLong("activeSinceElapsed", 0L).putBoolean("blockOnExpire", false).apply()
     handler.removeCallbacksAndMessages(null)
     emit("stopped")
     stopForegroundCompat()
@@ -205,13 +222,19 @@ class ChildSessionService : Service() {
     checkpoint(null)
     prefs.edit().putString("state", "EXPIRED").putLong("activeSinceElapsed", 0L).apply()
     emit("expired")
-    stopForegroundCompat()
     getSystemService(NotificationManager::class.java).notify(ALERT_NOTIFICATION, alertNotification())
-    stopSelf()
+    if (prefs.getBoolean("blockOnExpire", false)) {
+      startForeground(ACTIVE_NOTIFICATION, blockingNotification())
+    } else {
+      stopForegroundCompat()
+      stopSelf()
+    }
   }
 
   private fun emit(type: String) {
-    sendBroadcast(Intent(EVENT_ACTION).setPackage(packageName).putExtra("eventType", type))
+    sendBroadcast(Intent(EVENT_ACTION).setPackage(packageName)
+      .putExtra("eventType", type)
+      .putExtra("timestampMs", System.currentTimeMillis()))
   }
 
   private fun createChannels() {
@@ -239,6 +262,16 @@ class ChildSessionService : Service() {
       .setContentTitle("Screen-time break")
       .setContentText("The child session limit has been reached")
       .setAutoCancel(true)
+      .setContentIntent(appPendingIntent())
+      .build()
+
+  private fun blockingNotification(): Notification =
+    notificationBuilder(ACTIVE_CHANNEL)
+      .setSmallIcon(applicationInfo.icon.takeIf { it != 0 } ?: android.R.drawable.ic_dialog_alert)
+      .setContentTitle("Screen-time break is active")
+      .setContentText("Parent PIN is required to end child mode")
+      .setOngoing(true)
+      .setOnlyAlertOnce(true)
       .setContentIntent(appPendingIntent())
       .build()
 

@@ -13,9 +13,10 @@ export interface ChildSessionSnapshot {
   startedAtMs: number;
   timestampMs: number;
   isScreenOn: boolean;
+  blockOnExpire: boolean;
 }
 
-export interface StartChildSessionOptions { durationMs?: number; warningBeforeMs?: number }
+export interface StartChildSessionOptions { durationMs?: number; warningBeforeMs?: number; blockOnExpire?: boolean }
 
 const Native = NativeModules.EyeSaverChildSession;
 const requireNative = () => {
@@ -29,7 +30,11 @@ export async function requestNotificationPermission(): Promise<boolean> {
 }
 
 export const startChildSession = (options: StartChildSessionOptions = {}): Promise<boolean> =>
-  requireNative().start({durationMs: options.durationMs ?? 20 * 60_000, warningBeforeMs: options.warningBeforeMs ?? 2 * 60_000});
+  requireNative().start({
+    durationMs: options.durationMs ?? 20 * 60_000,
+    warningBeforeMs: options.warningBeforeMs ?? 2 * 60_000,
+    blockOnExpire: options.blockOnExpire ?? false,
+  });
 export const pauseChildSession = (): Promise<boolean> => requireNative().pause();
 export const resumeChildSession = (): Promise<boolean> => requireNative().resume();
 export const stopChildSession = (): Promise<boolean> => requireNative().stop();

@@ -8,6 +8,9 @@ buildscript {
 }
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+if (project != rootProject) {
+  layout.buildDirectory.set(new File(System.getProperty('java.io.tmpdir'), 'eye-saver-parent-auth-build'))
+}
 android {
   namespace 'com.eyesaver.parentauth'
   compileSdkVersion rootProject.ext.has('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 35
