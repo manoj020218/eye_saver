@@ -1,6 +1,5 @@
 package com.eyesaver.deviceguard
 
-import android.app.AppOpsManager
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
@@ -20,6 +19,7 @@ class DeviceGuardModule(private val context: ReactApplicationContext) : ReactCon
   companion object { const val NAME = "EyeSaverDeviceGuard" }
   private val policy by lazy { context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager }
   private val admin by lazy { ComponentName(context, EyeSaverAdminReceiver::class.java) }
+  private val selectiveGuardPrefs by lazy { context.getSharedPreferences(RestrictedAppMonitorService.PREFS, Context.MODE_PRIVATE) }
 
   override fun getName(): String = NAME
 
@@ -122,10 +122,83 @@ class DeviceGuardModule(private val context: ReactApplicationContext) : ReactCon
     promise.resolve(true)
   }
 
+  @ReactMethod
+  @Suppress("DEPRECATION")
+  fun getLaunchableApps(promise: Promise) {
+    try {
+      val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+      val seen = linkedMapOf<String, String>()
+      context.packageManager.queryIntentActivities(launcherIntent, 0).forEach { info ->
+        val targetPackage = info.activityInfo?.packageName ?: return@forEach
+        if (targetPackage != context.packageName) {
+          seen[targetPackage] = info.loadLabel(context.packageManager)?.toString() ?: targetPackage
+        }
+      }
+      val result = Arguments.createArray()
+      seen.entries.sortedBy { it.value.lowercase() }.forEach { (targetPackage, label) ->
+        result.pushMap(Arguments.createMap().apply {
+          putString("packageName", targetPackage)
+          putString("label", label)
+        })
+      }
+      promise.resolve(result)
+    } catch (error: Exception) {
+      promise.reject("E_APP_LIST", "Could not list launchable apps", error)
+    }
+  }
+
+  @ReactMethod
+  fun getRestrictedPackages(promise: Promise) {
+    promise.resolve(Arguments.fromList(
+      selectiveGuardPrefs.getStringSet(RestrictedAppMonitorService.KEY_PACKAGES, emptySet()).orEmpty().sorted()
+    ))
+  }
+
+  @ReactMethod
+  fun setRestrictedPackages(packages: ReadableArray, promise: Promise) {
+    val selected = (0 until packages.size())
+      .mapNotNull { packages.getString(it) }
+      .filter { it.isNotBlank() && it != context.packageName }
+      .toSet()
+    val saved = selectiveGuardPrefs.edit().putStringSet(RestrictedAppMonitorService.KEY_PACKAGES, selected).commit()
+    if (!saved) { promise.reject("E_RESTRICTION_SAVE", "Android did not save the selected apps"); return }
+    if (selected.isEmpty()) RestrictedAppMonitorService.stop(context)
+    promise.resolve(true)
+  }
+
+  @ReactMethod
+  fun startSelectiveGuard(intervalMs: Double, promise: Promise) {
+    if (!Settings.canDrawOverlays(context)) {
+      promise.reject("E_OVERLAY_REQUIRED", "Display-over-other-apps permission is required")
+      return
+    }
+    if (!hasUsageAccess()) {
+      promise.reject("E_USAGE_ACCESS_REQUIRED", "Usage access is required to detect the selected app")
+      return
+    }
+    if (selectiveGuardPrefs.getStringSet(RestrictedAppMonitorService.KEY_PACKAGES, emptySet()).isNullOrEmpty()) {
+      promise.resolve(false)
+      return
+    }
+    try {
+      val intent = Intent(context, RestrictedAppMonitorService::class.java)
+        .setAction(RestrictedAppMonitorService.ACTION_START)
+        .putExtra("intervalMs", intervalMs.toLong().coerceIn(750L, 10_000L))
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
+      else context.startService(intent)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("E_SELECTIVE_GUARD_START", "Could not start selected-app protection", error)
+    }
+  }
+
+  @ReactMethod
+  fun stopSelectiveGuard(promise: Promise) {
+    RestrictedAppMonitorService.stop(context)
+    promise.resolve(true)
+  }
+
   private fun hasUsageAccess(): Boolean {
-    val ops = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-    val mode = if (Build.VERSION.SDK_INT >= 29) ops.unsafeCheckOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, context.applicationInfo.uid, context.packageName)
-      else @Suppress("DEPRECATION") ops.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, context.applicationInfo.uid, context.packageName)
-    return mode == AppOpsManager.MODE_ALLOWED
+    return RestrictedAppMonitorService.hasUsageAccess(context)
   }
 }

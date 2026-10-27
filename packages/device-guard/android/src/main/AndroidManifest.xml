@@ -1,6 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
   <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.MAIN" />
+      <category android:name="android.intent.category.LAUNCHER" />
+    </intent>
+  </queries>
   <application>
     <receiver
       android:name=".EyeSaverAdminReceiver"
@@ -19,6 +27,17 @@
     <service
       android:name=".BreakOverlayService"
       android:exported="false" />
+    <service
+      android:name=".RestrictedAppOverlayService"
+      android:exported="false" />
+    <service
+      android:name=".RestrictedAppMonitorService"
+      android:exported="false"
+      android:foregroundServiceType="specialUse">
+      <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="Parent-started selective app restriction during a child session" />
+    </service>
     <receiver
       android:name=".BreakEnforcementReceiver"
       android:exported="false">

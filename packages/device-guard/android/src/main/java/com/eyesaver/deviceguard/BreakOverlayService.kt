@@ -36,9 +36,10 @@ class BreakOverlayService : Service() {
         .putExtra("timestampMs", timestampMs)
 
     fun dismiss(context: Context) {
-      instance?.dismissOverlay() ?: try {
-        context.startService(Intent(context, BreakOverlayService::class.java).setAction(ACTION_DISMISS))
-      } catch (_: Exception) { Unit }
+      instance?.dismissOverlay() ?: run {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+        context.stopService(Intent(context, BreakOverlayService::class.java))
+      }
     }
 
   }

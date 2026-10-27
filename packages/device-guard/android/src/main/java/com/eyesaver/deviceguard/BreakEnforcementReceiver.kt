@@ -9,7 +9,10 @@ class BreakEnforcementReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent?) {
     if (intent?.action != "com.eyesaver.childsession.EVENT") return
     when (intent.getStringExtra("eventType")) {
+      "started", "resumed" -> try { RestrictedAppMonitorService.startIfConfigured(context) } catch (_: Exception) { Unit }
+      "paused" -> RestrictedAppMonitorService.stop(context)
       "expired" -> {
+        RestrictedAppMonitorService.stop(context)
         val session = context.getSharedPreferences("eye_saver_child_session", Context.MODE_PRIVATE)
         if (session.getBoolean("blockOnExpire", false) && Settings.canDrawOverlays(context)) {
           try {
@@ -23,7 +26,10 @@ class BreakEnforcementReceiver : BroadcastReceiver() {
           }
         }
       }
-      "stopped" -> BreakOverlayService.dismiss(context)
+      "stopped" -> {
+        RestrictedAppMonitorService.stop(context)
+        BreakOverlayService.dismiss(context)
+      }
     }
   }
 }

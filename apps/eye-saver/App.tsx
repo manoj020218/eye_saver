@@ -23,11 +23,17 @@ import {
 import {
   dismissBreakScreen,
   getDeviceGuardCapabilities,
+  getLaunchableApps,
+  getRestrictedPackages,
   requestDeviceAdmin,
   requestOverlayPermission,
   requestUsageAccess,
+  setRestrictedPackages,
   showBreakScreen,
+  startSelectiveGuard,
+  stopSelectiveGuard,
   type DeviceGuardCapabilities,
+  type LaunchableApp,
 } from '@eye-saver/device-guard';
 import {isFaceEnrolled} from '@eye-saver/face-verification-core';
 import {getParentAuthStatus, setParentPin, verifyParentPin} from '@eye-saver/parent-auth';
@@ -39,6 +45,8 @@ const EMPTY_SESSION: ChildSessionSnapshot = {
   eventType: 'state', state: 'idle', sessionId: null, durationMs: 0,
   usedMs: 0, remainingMs: 0, startedAtMs: 0, timestampMs: 0, isScreenOn: true,
   blockOnExpire: false,
+  verificationRequired: false, verificationCheckAtUsedMs: 0,
+  verificationRequestedAtMs: 0, verificationCompletedAtMs: 0,
 };
 const EMPTY_GUARD: DeviceGuardCapabilities = {
   isAdminActive: false, isDeviceOwner: false, usageAccessGranted: false,
@@ -60,6 +68,8 @@ function AppContent() {
   const [faceEnrolled, setFaceEnrolled] = useState(false);
   const [proximity, setProximity] = useState<ProximityCapabilities>({available: false});
   const [proximityEnabled, setProximityEnabled] = useState(false);
+  const [launchableApps, setLaunchableApps] = useState<LaunchableApp[]>([]);
+  const [restrictedPackages, setRestrictedPackageState] = useState<string[]>([]);
   const [, redrawClock] = useState(0);
 
   useProximityAlert({
@@ -71,12 +81,15 @@ function AppContent() {
   });
 
   const refreshCapabilities = useCallback(async () => {
-    const [nextGuard, enrolled, proximityInfo] = await Promise.all([
+    const [nextGuard, enrolled, proximityInfo, apps, selectedPackages] = await Promise.all([
       getDeviceGuardCapabilities(), isFaceEnrolled('child-1'), FaceProximity.getCapabilities(),
+      getLaunchableApps(), getRestrictedPackages(),
     ]);
     setGuard(nextGuard);
     setFaceEnrolled(enrolled);
     setProximity(proximityInfo);
+    setLaunchableApps(apps);
+    setRestrictedPackageState(selectedPackages);
   }, []);
 
   const bootstrap = useCallback(async () => {
@@ -108,6 +121,9 @@ function AppContent() {
           setScreen('child');
           showBreakScreen({message: 'Time for an eye and screen break', triggeredAtMs: event.timestampMs})
             .catch(error => setMessage(errorText(error)));
+        }
+        if (event.eventType === 'verification_required') {
+          setMessage(`Random face check requested at ${clock(event.verificationRequestedAtMs)}.`);
         }
         if (event.eventType === 'stopped') {
           setSession(EMPTY_SESSION);
@@ -159,6 +175,7 @@ function AppContent() {
       setPin('');
       if (target === 'stop') {
         await stopChildSession();
+        await stopSelectiveGuard();
         await dismissBreakScreen();
         setSession(EMPTY_SESSION);
       }
@@ -175,17 +192,35 @@ function AppContent() {
         setMessage('Enable "Display over other apps", return to Eye Saver, then press Start again. On Xiaomi, first tap EyeSaverApp in the list, then enable the switch.');
         return;
       }
+      if (restrictedPackages.length > 0 && !guard.usageAccessGranted) {
+        await requestUsageAccess();
+        setMessage('Allow Usage access, return to Eye Saver, then press Start again. This is required only for selected-app restrictions.');
+        return;
+      }
       await requestNotificationPermission();
       await startChildSession({
         durationMs: durationMinutes * 60_000,
         warningBeforeMs: Math.min(2 * 60_000, durationMinutes * 30_000),
         blockOnExpire: true,
       });
+      if (restrictedPackages.length > 0) await startSelectiveGuard(1500);
       const now = Date.now();
       setSession({...EMPTY_SESSION, state: 'active', durationMs: durationMinutes * 60_000, remainingMs: durationMinutes * 60_000, timestampMs: now, startedAtMs: now});
       setScreen('child');
     } catch (error) { setMessage(errorText(error)); }
     finally { setBusy(false); }
+  }
+
+  async function toggleRestrictedPackage(packageName: string) {
+    const next = restrictedPackages.includes(packageName)
+      ? restrictedPackages.filter(value => value !== packageName)
+      : [...restrictedPackages, packageName];
+    setRestrictedPackageState(next);
+    try { await setRestrictedPackages(next); }
+    catch (error) {
+      setRestrictedPackageState(restrictedPackages);
+      setMessage(errorText(error));
+    }
   }
 
   if (screen === 'loading') return <SafeAreaView style={styles.center}><ActivityIndicator size="large" color="#5fe0b7" /><Text style={styles.muted}>Preparing secure child mode…</Text></SafeAreaView>;
@@ -227,10 +262,24 @@ function AppContent() {
         <StatusRow label="Usage access" ready={guard.usageAccessGranted} action="Allow" onPress={requestUsageAccess} />
         <StatusRow label="Dedicated Device Owner" ready={guard.isDeviceOwner} note="Required for strong package suspension on a dedicated child phone" />
         <StatusRow label="Child face enrolled" ready={faceEnrolled} note="Camera/model adapter is the next milestone" />
+        <StatusRow label="Random mid-session check" ready={false} note={faceEnrolled ? 'Enrollment exists; camera checkpoint adapter is still required' : 'Activates after secure child-face enrollment'} />
       </Card>
 
       <Card title="Session length">
         <View style={styles.chips}>{[1, 20, 30, 45].map(value => <Pressable key={value} onPress={() => setDurationMinutes(value)} style={[styles.chip, durationMinutes === value && styles.chipActive]}><Text style={[styles.chipText, durationMinutes === value && styles.chipTextActive]}>{value === 1 ? '1 min test' : `${value} min`}</Text></Pressable>)}</View>
+      </Card>
+
+      <Card title="Apps restricted during child mode">
+        <Text style={styles.rowNote}>Choose only the apps Eye Saver should cover. Leave Phone unselected so calls remain available. Play Store can be selected here, but tamper-proof install blocking requires Device Owner.</Text>
+        {launchableApps.map(app => <View key={app.packageName} style={styles.switchRow}>
+          <View style={styles.flex}><Text style={styles.rowTitle}>{app.label}</Text><Text style={styles.rowNote}>{app.packageName}</Text></View>
+          <Switch
+            value={restrictedPackages.includes(app.packageName)}
+            onValueChange={() => toggleRestrictedPackage(app.packageName)}
+            trackColor={{true: '#2f8068'}}
+            thumbColor="#d8fff2"
+          />
+        </View>)}
       </Card>
 
       <Card title="Eye-distance warning">

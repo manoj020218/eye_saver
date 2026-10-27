@@ -17,6 +17,7 @@ import android.os.PowerManager
 import android.os.SystemClock
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.WritableMap
+import java.security.SecureRandom
 import java.util.UUID
 import kotlin.math.max
 
@@ -27,6 +28,7 @@ class ChildSessionService : Service() {
     const val ACTION_RESUME = "com.eyesaver.childsession.RESUME"
     const val ACTION_STOP = "com.eyesaver.childsession.STOP"
     const val ACTION_RESTORE = "com.eyesaver.childsession.RESTORE"
+    const val ACTION_COMPLETE_VERIFICATION = "com.eyesaver.childsession.COMPLETE_VERIFICATION"
     const val EVENT_ACTION = "com.eyesaver.childsession.EVENT"
     private const val PREFS = "eye_saver_child_session"
     private const val ACTIVE_CHANNEL = "eye_saver_child_session_active"
@@ -61,6 +63,10 @@ class ChildSessionService : Service() {
         putDouble("timestampMs", System.currentTimeMillis().toDouble())
         putBoolean("isScreenOn", screenOn)
         putBoolean("blockOnExpire", prefs.getBoolean("blockOnExpire", false))
+        putBoolean("verificationRequired", prefs.getBoolean("verificationRequired", false))
+        putDouble("verificationCheckAtUsedMs", prefs.getLong("verificationCheckAtUsedMs", 0L).toDouble())
+        putDouble("verificationRequestedAtMs", prefs.getLong("verificationRequestedAtMs", 0L).toDouble())
+        putDouble("verificationCompletedAtMs", prefs.getLong("verificationCompletedAtMs", 0L).toDouble())
       }
     }
   }
@@ -71,6 +77,7 @@ class ChildSessionService : Service() {
   private var screenReceiverRegistered = false
   private val warningRunnable = Runnable { emitWarningIfNeeded() }
   private val expiryRunnable = Runnable { expireIfNeeded() }
+  private val verificationRunnable = Runnable { requireVerificationIfNeeded() }
   private val screenReceiver = object : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
       when (intent?.action) {
@@ -94,12 +101,15 @@ class ChildSessionService : Service() {
       ACTION_START -> startNew(
         intent.getLongExtra("durationMs", 20 * 60_000L),
         intent.getLongExtra("warningBeforeMs", 2 * 60_000L),
-        intent.getBooleanExtra("blockOnExpire", false)
+        intent.getBooleanExtra("blockOnExpire", false),
+        intent.getLongExtra("verificationMinUsedMs", 0L),
+        intent.getLongExtra("verificationMaxUsedMs", 0L)
       )
       ACTION_PAUSE -> pauseSession()
       ACTION_RESUME -> resumeSession()
       ACTION_STOP -> stopSession()
       ACTION_RESTORE -> restoreSession()
+      ACTION_COMPLETE_VERIFICATION -> completeVerification(intent.getBooleanExtra("success", false))
       else -> restoreSession()
     }
     return START_STICKY
@@ -113,7 +123,14 @@ class ChildSessionService : Service() {
     super.onDestroy()
   }
 
-  private fun startNew(durationMs: Long, warningBeforeMs: Long, blockOnExpire: Boolean) {
+  private fun startNew(
+    durationMs: Long,
+    warningBeforeMs: Long,
+    blockOnExpire: Boolean,
+    verificationMinUsedMs: Long,
+    verificationMaxUsedMs: Long
+  ) {
+    val verificationAt = randomVerificationPoint(durationMs, verificationMinUsedMs, verificationMaxUsedMs)
     prefs.edit()
       .putString("state", "ACTIVE")
       .putString("sessionId", UUID.randomUUID().toString())
@@ -124,6 +141,10 @@ class ChildSessionService : Service() {
       .putLong("startedAtMs", System.currentTimeMillis())
       .putBoolean("warned", false)
       .putBoolean("blockOnExpire", blockOnExpire)
+      .putBoolean("verificationRequired", false)
+      .putLong("verificationCheckAtUsedMs", verificationAt)
+      .putLong("verificationRequestedAtMs", 0L)
+      .putLong("verificationCompletedAtMs", 0L)
       .apply()
     startForeground(ACTIVE_NOTIFICATION, activeNotification())
     emit("started")
@@ -135,6 +156,7 @@ class ChildSessionService : Service() {
       checkpoint(null)
       startForeground(ACTIVE_NOTIFICATION, activeNotification())
       if (power.isInteractive) prefs.edit().putLong("activeSinceElapsed", SystemClock.elapsedRealtime()).apply()
+      if (prefs.getBoolean("verificationRequired", false)) emit("verification_required")
       schedule()
     } else if (prefs.getString("state", "IDLE") == "EXPIRED" && prefs.getBoolean("blockOnExpire", false)) {
       startForeground(ACTIVE_NOTIFICATION, blockingNotification())
@@ -157,12 +179,18 @@ class ChildSessionService : Service() {
       .putLong("activeSinceElapsed", if (power.isInteractive) SystemClock.elapsedRealtime() else 0L).apply()
     startForeground(ACTIVE_NOTIFICATION, activeNotification())
     emit("resumed")
+    if (prefs.getBoolean("verificationRequired", false)) emit("verification_required")
     schedule()
   }
 
   private fun stopSession() {
     checkpoint(null)
-    prefs.edit().putString("state", "IDLE").putLong("activeSinceElapsed", 0L).putBoolean("blockOnExpire", false).apply()
+    prefs.edit()
+      .putString("state", "IDLE")
+      .putLong("activeSinceElapsed", 0L)
+      .putBoolean("blockOnExpire", false)
+      .putBoolean("verificationRequired", false)
+      .apply()
     handler.removeCallbacksAndMessages(null)
     emit("stopped")
     stopForegroundCompat()
@@ -184,6 +212,7 @@ class ChildSessionService : Service() {
     if (prefs.getString("state", "IDLE") != "ACTIVE") return
     prefs.edit().putLong("activeSinceElapsed", SystemClock.elapsedRealtime()).apply()
     if (event != null) emit(event)
+    if (prefs.getBoolean("verificationRequired", false)) emit("verification_required")
     schedule()
   }
 
@@ -197,6 +226,7 @@ class ChildSessionService : Service() {
   private fun schedule() {
     handler.removeCallbacks(warningRunnable)
     handler.removeCallbacks(expiryRunnable)
+    handler.removeCallbacks(verificationRunnable)
     if (prefs.getString("state", "IDLE") != "ACTIVE" || !power.isInteractive) return
     val duration = prefs.getLong("durationMs", 0L)
     val remaining = duration - currentUsed()
@@ -206,7 +236,48 @@ class ChildSessionService : Service() {
       val warningDelay = remaining - warningBefore
       if (warningDelay <= 0L) emitWarningIfNeeded() else handler.postDelayed(warningRunnable, warningDelay)
     }
+    val verificationAt = prefs.getLong("verificationCheckAtUsedMs", 0L)
+    if (!prefs.getBoolean("verificationRequired", false) &&
+      prefs.getLong("verificationCompletedAtMs", 0L) == 0L && verificationAt > 0L) {
+      val verificationDelay = verificationAt - currentUsed()
+      if (verificationDelay <= 0L) requireVerificationIfNeeded()
+      else handler.postDelayed(verificationRunnable, verificationDelay)
+    }
     handler.postDelayed(expiryRunnable, remaining)
+  }
+
+  private fun requireVerificationIfNeeded() {
+    if (prefs.getString("state", "IDLE") != "ACTIVE" || prefs.getBoolean("verificationRequired", false)) return
+    val verificationAt = prefs.getLong("verificationCheckAtUsedMs", 0L)
+    if (verificationAt <= 0L || currentUsed() < verificationAt) { schedule(); return }
+    prefs.edit()
+      .putBoolean("verificationRequired", true)
+      .putLong("verificationRequestedAtMs", System.currentTimeMillis())
+      .apply()
+    emit("verification_required")
+  }
+
+  private fun completeVerification(success: Boolean) {
+    if (prefs.getString("state", "IDLE") != "ACTIVE" || !prefs.getBoolean("verificationRequired", false)) return
+    if (!success) {
+      emit("verification_failed")
+      return
+    }
+    prefs.edit()
+      .putBoolean("verificationRequired", false)
+      .putLong("verificationCompletedAtMs", System.currentTimeMillis())
+      .apply()
+    emit("verification_passed")
+    schedule()
+  }
+
+  private fun randomVerificationPoint(durationMs: Long, requestedMin: Long, requestedMax: Long): Long {
+    if (requestedMin <= 0L || requestedMax <= 0L) return 0L
+    val earliest = requestedMin.coerceAtLeast(5_000L)
+    val latest = requestedMax.coerceAtMost(durationMs - 5_000L)
+    if (latest < earliest) return 0L
+    val range = latest - earliest
+    return earliest + if (range == 0L) 0L else (SecureRandom().nextDouble() * (range + 1L)).toLong()
   }
 
   private fun emitWarningIfNeeded() {

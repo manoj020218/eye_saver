@@ -1,7 +1,7 @@
 import {NativeEventEmitter, NativeModules, PermissionsAndroid, Platform} from 'react-native';
 
 export type ChildSessionState = 'idle' | 'active' | 'paused' | 'expired';
-export type ChildSessionEventType = 'state' | 'started' | 'warning' | 'expired' | 'paused' | 'resumed' | 'stopped' | 'screen_on' | 'screen_off';
+export type ChildSessionEventType = 'state' | 'started' | 'warning' | 'expired' | 'paused' | 'resumed' | 'stopped' | 'screen_on' | 'screen_off' | 'verification_required' | 'verification_passed' | 'verification_failed';
 
 export interface ChildSessionSnapshot {
   eventType: ChildSessionEventType;
@@ -14,9 +14,21 @@ export interface ChildSessionSnapshot {
   timestampMs: number;
   isScreenOn: boolean;
   blockOnExpire: boolean;
+  verificationRequired: boolean;
+  verificationCheckAtUsedMs: number;
+  verificationRequestedAtMs: number;
+  verificationCompletedAtMs: number;
 }
 
-export interface StartChildSessionOptions { durationMs?: number; warningBeforeMs?: number; blockOnExpire?: boolean }
+export interface StartChildSessionOptions {
+  durationMs?: number;
+  warningBeforeMs?: number;
+  blockOnExpire?: boolean;
+  /** Earliest active screen-time point at which the one-time random check can occur. */
+  verificationMinUsedMs?: number;
+  /** Latest active screen-time point at which the one-time random check can occur. */
+  verificationMaxUsedMs?: number;
+}
 
 const Native = NativeModules.EyeSaverChildSession;
 const requireNative = () => {
@@ -34,10 +46,13 @@ export const startChildSession = (options: StartChildSessionOptions = {}): Promi
     durationMs: options.durationMs ?? 20 * 60_000,
     warningBeforeMs: options.warningBeforeMs ?? 2 * 60_000,
     blockOnExpire: options.blockOnExpire ?? false,
+    verificationMinUsedMs: options.verificationMinUsedMs ?? 0,
+    verificationMaxUsedMs: options.verificationMaxUsedMs ?? 0,
   });
 export const pauseChildSession = (): Promise<boolean> => requireNative().pause();
 export const resumeChildSession = (): Promise<boolean> => requireNative().resume();
 export const stopChildSession = (): Promise<boolean> => requireNative().stop();
+export const completeChildVerification = (success: boolean): Promise<boolean> => requireNative().completeVerification(success);
 export const getChildSessionState = (): Promise<ChildSessionSnapshot> => requireNative().getState();
 export const getChildSessionCapabilities = (): Promise<{foregroundServiceSupported: boolean; notificationsGranted: boolean; timingModel: string}> => requireNative().getCapabilities();
 

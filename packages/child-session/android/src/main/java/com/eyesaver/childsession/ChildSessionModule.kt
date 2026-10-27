@@ -37,10 +37,14 @@ class ChildSessionModule(private val context: ReactApplicationContext) : ReactCo
     val durationMs = options.longValue("durationMs", 20 * 60_000L).coerceIn(10_000L, 24 * 60 * 60_000L)
     val warningBeforeMs = options.longValue("warningBeforeMs", 2 * 60_000L).coerceIn(0L, durationMs)
     val blockOnExpire = options != null && options.hasKey("blockOnExpire") && !options.isNull("blockOnExpire") && options.getBoolean("blockOnExpire")
+    val verificationMinUsedMs = options.longValue("verificationMinUsedMs", 0L).coerceAtLeast(0L)
+    val verificationMaxUsedMs = options.longValue("verificationMaxUsedMs", 0L).coerceAtLeast(0L)
     val intent = command(ChildSessionService.ACTION_START)
       .putExtra("durationMs", durationMs)
       .putExtra("warningBeforeMs", warningBeforeMs)
       .putExtra("blockOnExpire", blockOnExpire)
+      .putExtra("verificationMinUsedMs", verificationMinUsedMs)
+      .putExtra("verificationMaxUsedMs", verificationMaxUsedMs)
     try {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
       else context.startService(intent)
@@ -53,6 +57,16 @@ class ChildSessionModule(private val context: ReactApplicationContext) : ReactCo
   @ReactMethod fun pause(promise: Promise) = send(ChildSessionService.ACTION_PAUSE, promise)
   @ReactMethod fun resume(promise: Promise) = send(ChildSessionService.ACTION_RESUME, promise)
   @ReactMethod fun stop(promise: Promise) = send(ChildSessionService.ACTION_STOP, promise)
+
+  @ReactMethod
+  fun completeVerification(success: Boolean, promise: Promise) {
+    try {
+      context.startService(command(ChildSessionService.ACTION_COMPLETE_VERIFICATION).putExtra("success", success))
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("E_SESSION_COMMAND", "Could not complete the face checkpoint", error)
+    }
+  }
 
   @ReactMethod
   fun getState(promise: Promise) {

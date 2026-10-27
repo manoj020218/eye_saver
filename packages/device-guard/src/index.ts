@@ -10,6 +10,7 @@ export interface DeviceGuardCapabilities {
   canWriteSystemGrayscale: false;
 }
 export interface BreakScreenOptions { message?: string; triggeredAtMs?: number }
+export interface LaunchableApp { packageName: string; label: string }
 const Native = NativeModules.EyeSaverDeviceGuard;
 const module = () => {
   if (!Native) throw new Error('@eye-saver/device-guard is not linked. Rebuild the Android app.');
@@ -26,3 +27,8 @@ export const startLockTask = (): Promise<boolean> => module().startLockTask();
 export const stopLockTask = (): Promise<boolean> => module().stopLockTask();
 export const showBreakScreen = (options: BreakScreenOptions = {}): Promise<boolean> => module().showBreakScreen(options);
 export const dismissBreakScreen = (): Promise<boolean> => module().dismissBreakScreen();
+export const getLaunchableApps = (): Promise<LaunchableApp[]> => module().getLaunchableApps();
+export const getRestrictedPackages = (): Promise<string[]> => module().getRestrictedPackages();
+export const setRestrictedPackages = (packageNames: string[]): Promise<boolean> => module().setRestrictedPackages(packageNames);
+export const startSelectiveGuard = (intervalMs = 1500): Promise<boolean> => module().startSelectiveGuard(intervalMs);
+export const stopSelectiveGuard = (): Promise<boolean> => module().stopSelectiveGuard();
