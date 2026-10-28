@@ -10,6 +10,9 @@ export interface DeviceGuardCapabilities {
   canWriteSystemGrayscale: false;
   tamperGuardEnabled: boolean;
   tamperGuardActive: boolean;
+  batteryOptimizationExempt: boolean;
+  autoStartSettingsAvailable: boolean;
+  deviceManufacturer: string;
 }
 export interface BreakScreenOptions { message?: string; triggeredAtMs?: number }
 export interface LaunchableApp { packageName: string; label: string }
@@ -23,6 +26,8 @@ export const getDeviceGuardCapabilities = (): Promise<DeviceGuardCapabilities> =
 export const requestDeviceAdmin = (): Promise<boolean> => module().requestAdmin();
 export const requestUsageAccess = (): Promise<boolean> => module().requestUsageAccess();
 export const requestOverlayPermission = (): Promise<boolean> => module().requestOverlayPermission();
+export const requestBatteryOptimizationExemption = (): Promise<boolean> => module().requestBatteryOptimizationExemption();
+export const openAutoStartSettings = (): Promise<boolean> => module().openAutoStartSettings();
 export const setTamperGuardEnabled = (enabled: boolean): Promise<boolean> => module().setTamperGuardEnabled(enabled);
 export const lockDevice = (): Promise<boolean> => module().lockDevice();
 export const setPackagesSuspended = (packageNames: string[], suspended: boolean): Promise<string[]> => module().setPackagesSuspended(packageNames, suspended);

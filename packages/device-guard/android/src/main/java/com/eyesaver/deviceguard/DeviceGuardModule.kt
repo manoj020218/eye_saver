@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -19,6 +20,7 @@ class DeviceGuardModule(private val context: ReactApplicationContext) : ReactCon
   companion object { const val NAME = "EyeSaverDeviceGuard" }
   private val policy by lazy { context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager }
   private val admin by lazy { ComponentName(context, EyeSaverAdminReceiver::class.java) }
+  private val power by lazy { context.getSystemService(Context.POWER_SERVICE) as PowerManager }
   private val selectiveGuardPrefs by lazy { context.getSharedPreferences(RestrictedAppMonitorService.PREFS, Context.MODE_PRIVATE) }
 
   override fun getName(): String = NAME
@@ -36,6 +38,9 @@ class DeviceGuardModule(private val context: ReactApplicationContext) : ReactCon
     result.putBoolean("canWriteSystemGrayscale", false)
     result.putBoolean("tamperGuardEnabled", TamperGuardService.isEnabled(context))
     result.putBoolean("tamperGuardActive", TamperGuardService.isActive(context))
+    result.putBoolean("batteryOptimizationExempt", Build.VERSION.SDK_INT < 23 || power.isIgnoringBatteryOptimizations(context.packageName))
+    result.putBoolean("autoStartSettingsAvailable", autoStartIntent() != null)
+    result.putString("deviceManufacturer", Build.MANUFACTURER)
     promise.resolve(result)
   }
 
@@ -62,6 +67,42 @@ class DeviceGuardModule(private val context: ReactApplicationContext) : ReactCon
     val activity = context.currentActivity ?: return promise.reject("E_NO_ACTIVITY", "A visible Activity is required")
     activity.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
     promise.resolve(true)
+  }
+
+  @ReactMethod
+  fun requestBatteryOptimizationExemption(promise: Promise) {
+    if (Build.VERSION.SDK_INT < 23 || power.isIgnoringBatteryOptimizations(context.packageName)) {
+      promise.resolve(true)
+      return
+    }
+    val activity = context.currentActivity ?: return promise.reject("E_NO_ACTIVITY", "A visible Activity is required")
+    try {
+      activity.startActivity(Intent(
+        Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+        Uri.parse("package:${context.packageName}")
+      ))
+      promise.resolve(true)
+    } catch (error: Exception) {
+      try {
+        activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
+        promise.resolve(true)
+      } catch (fallbackError: Exception) {
+        promise.reject("E_BATTERY_SETTINGS", "Could not open Eye Saver battery settings", fallbackError)
+      }
+    }
+  }
+
+  @ReactMethod
+  fun openAutoStartSettings(promise: Promise) {
+    val activity = context.currentActivity ?: return promise.reject("E_NO_ACTIVITY", "A visible Activity is required")
+    try {
+      val intent = autoStartIntent()
+        ?: Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}"))
+      activity.startActivity(intent)
+      promise.resolve(autoStartIntent() != null)
+    } catch (error: Exception) {
+      promise.reject("E_AUTOSTART_SETTINGS", "Could not open AutoStart settings", error)
+    }
   }
 
   @ReactMethod
@@ -212,5 +253,18 @@ class DeviceGuardModule(private val context: ReactApplicationContext) : ReactCon
 
   private fun hasUsageAccess(): Boolean {
     return RestrictedAppMonitorService.hasUsageAccess(context)
+  }
+
+  private fun autoStartIntent(): Intent? {
+    val candidates = listOf(
+      ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
+      ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
+      ComponentName("com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"),
+      ComponentName("com.oplus.safecenter", "com.oplus.safecenter.startupapp.StartupAppListActivity"),
+      ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")
+    )
+    return candidates
+      .map { Intent().setComponent(it) }
+      .firstOrNull { context.packageManager.resolveActivity(it, 0) != null }
   }
 }

@@ -27,3 +27,7 @@ This is best-effort on a shared device: system UI can appear above app overlays,
 `setTamperGuardEnabled(true)` enables a separate low-frequency foreground monitor while the child timer is active. It protects Android Settings/App info, common package installers, Play Store and common manufacturer stores with the same native parent-PIN overlay. Calls and ordinary unselected apps stay available. The monitor polls every two seconds, stops when the session pauses or expires, and hands enforcement to the selective post-expiry guard.
 
 Removing the React Native activity from Recents does not stop the native foreground timer or tamper guard. This is still not equivalent to Device Owner: Android does not let an ordinary app disable the system Force Stop control, and a force-stopped package cannot receive its boot receiver until the user launches it again.
+
+## Guided settings links
+
+The package exposes direct, parent-initiated Android settings actions for overlay, Usage access, Device Admin, battery-optimization exemption, and manufacturer AutoStart pages. `openAutoStartSettings()` currently recognizes common Xiaomi, Huawei, Oppo/OnePlus, and Vivo components and falls back to Eye Saver's app-details page. Capability state can be refreshed when the host activity resumes so the UI immediately marks completed settings as ready.
