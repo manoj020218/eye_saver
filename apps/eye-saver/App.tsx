@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
   AppState,
+  BackHandler,
   Pressable,
   ScrollView,
   StatusBar,
@@ -29,6 +30,7 @@ import {
   requestOverlayPermission,
   requestUsageAccess,
   setRestrictedPackages,
+  setTamperGuardEnabled,
   showBreakScreen,
   startSelectiveGuard,
   stopSelectiveGuard,
@@ -66,6 +68,7 @@ const EMPTY_GUARD: DeviceGuardCapabilities = {
   isAdminActive: false, isDeviceOwner: false, usageAccessGranted: false,
   canSuspendPackages: false, isLockTaskPermitted: false, canDrawOverlays: false,
   canWriteSystemGrayscale: false,
+  tamperGuardEnabled: true, tamperGuardActive: false,
 };
 const EMPTY_DISTANCE_CAPABILITIES: FaceDistanceCapabilities = {
   androidSupported: true, frontCameraAvailable: false, cameraPermissionGranted: false,
@@ -213,10 +216,27 @@ function AppContent() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', state => {
-      if (state === 'active' && screen !== 'loading') refreshCapabilities().catch(() => undefined);
+      if (state !== 'active' || screen === 'loading') return;
+      Promise.all([refreshCapabilities(), getChildSessionState()])
+        .then(([, restoredSession]) => {
+          setSession(restoredSession);
+          if (restoredSession.state === 'active' || restoredSession.state === 'paused' || restoredSession.state === 'expired') {
+            setScreen('child');
+          }
+        })
+        .catch(() => undefined);
     });
     return () => subscription.remove();
   }, [refreshCapabilities, screen]);
+
+  useEffect(() => {
+    if (screen !== 'child') return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setMessage('Child mode continues in the background. Enter the parent PIN to end it.');
+      return true;
+    });
+    return () => subscription.remove();
+  }, [screen]);
 
   useEffect(() => {
     if (screen !== 'child' || session.state !== 'active') return;
@@ -269,9 +289,9 @@ function AppContent() {
         setMessage('Enable "Display over other apps", return to Eye Saver, then press Start again. On Xiaomi, first tap EyeSaverApp in the list, then enable the switch.');
         return;
       }
-      if (restrictedPackages.length > 0 && !guard.usageAccessGranted) {
+      if ((restrictedPackages.length > 0 || guard.tamperGuardEnabled) && !guard.usageAccessGranted) {
         await requestUsageAccess();
-        setMessage('Allow Usage access, return to Eye Saver, then press Start again. This is required only for selected-app restrictions.');
+        setMessage('Allow Usage access, return to Eye Saver, then press Start again. It lets Eye Saver protect Settings and detect parent-selected apps.');
         return;
       }
       if (distanceEnabled && !distanceCapabilities.cameraPermissionGranted) {
@@ -383,10 +403,17 @@ function AppContent() {
       <Card title="Protection readiness">
         <StatusRow label="Break overlay" ready={guard.canDrawOverlays} action="Required" note="Blocks YouTube with a black break screen when time expires" onPress={requestOverlayPermission} />
         <StatusRow label="Device Admin lock" ready={guard.isAdminActive} action="Enable" note="Optional extra lock; not sufficient if the child knows the device pattern" onPress={requestDeviceAdmin} />
-        <StatusRow label="Usage access" ready={guard.usageAccessGranted} action="Allow" onPress={requestUsageAccess} />
+        <StatusRow label="Usage access" ready={guard.usageAccessGranted} action="Allow" note="Required for Settings/install protection and selected-app restrictions" onPress={requestUsageAccess} />
+        <StatusRow label="Swipe-close recovery" ready note="Foreground child mode continues if Eye Saver is removed from Recents" />
+        <StatusRow label="Reboot recovery receiver" ready note="Restores persisted child mode after a normal reboot; Xiaomi AutoStart/battery rules can delay it" />
         <StatusRow label="Dedicated Device Owner" ready={guard.isDeviceOwner} note="Required for strong package suspension on a dedicated child phone" />
         <StatusRow label="Child face enrolled" ready={faceEnrolled} note="Camera/model adapter is the next milestone" />
         <StatusRow label="Random mid-session check" ready={false} note={faceEnrolled ? 'Enrollment exists; camera checkpoint adapter is still required' : 'Activates after secure child-face enrollment'} />
+      </Card>
+
+      <Card title="Close and tamper protection">
+        <View style={styles.switchRow}><View style={styles.flex}><Text style={styles.rowTitle}>Protect Settings and app installs</Text><Text style={styles.rowNote}>Blocks Settings, App info/Force Stop, package installers and app stores during child mode. Parent PIN ends the session.</Text></View><Switch value={guard.tamperGuardEnabled} onValueChange={async value => { try { await setTamperGuardEnabled(value); await refreshCapabilities(); } catch (error) { setMessage(errorText(error)); } }} trackColor={{true: '#2f8068'}} thumbColor="#d8fff2" /></View>
+        <Text style={styles.rowNote}>Personal-phone protection is best effort. Android Force Stop cannot be disabled by a normal app; Device Owner mode is required for tamper-proof control.</Text>
       </Card>
 
       <Card title="Session length">
@@ -434,7 +461,7 @@ function AppContent() {
       </Card>
 
       <PrimaryButton label={`Start ${durationMinutes}-minute child session`} onPress={startSession} disabled={busy} />
-      <Text style={styles.disclosure}>Child mode uses visible Android notifications and explicitly granted overlays. Camera distance monitoring is parent-started, shows Android's privacy indicator, and processes frames locally without saving them. Android does not allow a normal app to turn YouTube truly grayscale; dedicated Device Owner mode can suspend it instead.</Text>
+      <Text style={styles.disclosure}>Child mode uses visible Android notifications, Usage access and explicitly granted overlays. Swipe-closing Eye Saver does not end its foreground protection. Camera distance monitoring is parent-started, shows Android's privacy indicator, and processes frames locally without saving them. Force Stop remains an Android system limitation unless this app is provisioned as Device Owner.</Text>
       {!!message && <Text style={styles.error}>{message}</Text>}
     </ScrollView>
   </SafeAreaView>;

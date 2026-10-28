@@ -34,6 +34,8 @@ class DeviceGuardModule(private val context: ReactApplicationContext) : ReactCon
     result.putBoolean("isLockTaskPermitted", policy.isLockTaskPermitted(context.packageName))
     result.putBoolean("canDrawOverlays", Settings.canDrawOverlays(context))
     result.putBoolean("canWriteSystemGrayscale", false)
+    result.putBoolean("tamperGuardEnabled", TamperGuardService.isEnabled(context))
+    result.putBoolean("tamperGuardActive", TamperGuardService.isActive(context))
     promise.resolve(result)
   }
 
@@ -60,6 +62,16 @@ class DeviceGuardModule(private val context: ReactApplicationContext) : ReactCon
     val activity = context.currentActivity ?: return promise.reject("E_NO_ACTIVITY", "A visible Activity is required")
     activity.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
     promise.resolve(true)
+  }
+
+  @ReactMethod
+  fun setTamperGuardEnabled(enabled: Boolean, promise: Promise) {
+    try {
+      TamperGuardService.setEnabled(context, enabled)
+      promise.resolve(true)
+    } catch (error: Exception) {
+      promise.reject("E_TAMPER_GUARD", "Could not update settings protection", error)
+    }
   }
 
   @ReactMethod

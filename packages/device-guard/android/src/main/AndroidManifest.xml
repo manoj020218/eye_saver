@@ -38,6 +38,14 @@
         android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
         android:value="Parent-started selective app restriction during a child session" />
     </service>
+    <service
+      android:name=".TamperGuardService"
+      android:exported="false"
+      android:foregroundServiceType="specialUse">
+      <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="Parent-enabled protection of settings and app installation during child mode" />
+    </service>
     <receiver
       android:name=".BreakEnforcementReceiver"
       android:exported="false">

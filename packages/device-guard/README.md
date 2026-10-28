@@ -21,3 +21,9 @@ await startSelectiveGuard(1500);
 The selection is stored natively. In the Eye Saver app, selected apps remain usable while screen time is available; the child-session event receiver starts the monitor only when the timer expires. Starting, resuming, pausing, or ending a session stops the monitor and clears its overlay. A longer interval reduces polling and battery use but makes the post-expiry overlay appear later.
 
 This is best-effort on a shared device: system UI can appear above app overlays, Picture-in-Picture behavior varies by video app, and a user can revoke Usage/overlay access or uninstall the app. Device Owner mode should use `setPackagesSuspended()` and uninstall restrictions for tamper-resistant control. Keep the dialer unselected if calls must remain available.
+
+## Shared-phone tamper guard
+
+`setTamperGuardEnabled(true)` enables a separate low-frequency foreground monitor while the child timer is active. It protects Android Settings/App info, common package installers, Play Store and common manufacturer stores with the same native parent-PIN overlay. Calls and ordinary unselected apps stay available. The monitor polls every two seconds, stops when the session pauses or expires, and hands enforcement to the selective post-expiry guard.
+
+Removing the React Native activity from Recents does not stop the native foreground timer or tamper guard. This is still not equivalent to Device Owner: Android does not let an ordinary app disable the system Force Stop control, and a force-stopped package cannot receive its boot receiver until the user launches it again.

@@ -1,7 +1,7 @@
 import {NativeEventEmitter, NativeModules, PermissionsAndroid, Platform} from 'react-native';
 
 export type ChildSessionState = 'idle' | 'active' | 'paused' | 'expired';
-export type ChildSessionEventType = 'state' | 'started' | 'warning' | 'expired' | 'paused' | 'resumed' | 'stopped' | 'screen_on' | 'screen_off' | 'verification_required' | 'verification_passed' | 'verification_failed';
+export type ChildSessionEventType = 'state' | 'started' | 'restored' | 'warning' | 'expired' | 'paused' | 'resumed' | 'stopped' | 'screen_on' | 'screen_off' | 'verification_required' | 'verification_passed' | 'verification_failed';
 
 export interface ChildSessionSnapshot {
   eventType: ChildSessionEventType;

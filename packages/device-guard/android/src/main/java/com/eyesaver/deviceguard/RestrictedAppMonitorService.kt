@@ -36,7 +36,7 @@ class RestrictedAppMonitorService : Service() {
 
     fun stop(context: Context) {
       context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("monitorActive", false).apply()
-      RestrictedAppOverlayService.dismiss(context)
+      RestrictedAppOverlayService.dismiss(context, RestrictedAppOverlayService.REASON_RESTRICTED_APP)
       context.stopService(Intent(context, RestrictedAppMonitorService::class.java))
     }
 
@@ -99,7 +99,7 @@ class RestrictedAppMonitorService : Service() {
 
   override fun onDestroy() {
     handler.removeCallbacksAndMessages(null)
-    RestrictedAppOverlayService.dismiss(this)
+    RestrictedAppOverlayService.dismiss(this, RestrictedAppOverlayService.REASON_RESTRICTED_APP)
     super.onDestroy()
   }
 
@@ -133,7 +133,7 @@ class RestrictedAppMonitorService : Service() {
         overlaidPackage = current
       }
     } else if (overlaidPackage != null) {
-      RestrictedAppOverlayService.dismiss(this)
+      RestrictedAppOverlayService.dismiss(this, RestrictedAppOverlayService.REASON_RESTRICTED_APP)
       overlaidPackage = null
     }
   }
@@ -148,7 +148,7 @@ class RestrictedAppMonitorService : Service() {
     running = false
     prefs.edit().putBoolean("monitorActive", false).apply()
     handler.removeCallbacksAndMessages(null)
-    RestrictedAppOverlayService.dismiss(this)
+    RestrictedAppOverlayService.dismiss(this, RestrictedAppOverlayService.REASON_RESTRICTED_APP)
     if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE)
     else @Suppress("DEPRECATION") stopForeground(true)
     stopSelf()

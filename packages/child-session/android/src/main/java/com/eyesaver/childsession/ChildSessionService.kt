@@ -157,6 +157,7 @@ class ChildSessionService : Service() {
       startForeground(ACTIVE_NOTIFICATION, activeNotification())
       if (power.isInteractive) prefs.edit().putLong("activeSinceElapsed", SystemClock.elapsedRealtime()).apply()
       if (prefs.getBoolean("verificationRequired", false)) emit("verification_required")
+      emit("restored")
       schedule()
     } else if (prefs.getString("state", "IDLE") == "EXPIRED" && prefs.getBoolean("blockOnExpire", false)) {
       startForeground(ACTIVE_NOTIFICATION, blockingNotification())

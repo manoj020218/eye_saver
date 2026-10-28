@@ -21,4 +21,6 @@ const unsubscribe = onChildSessionEvent(event => {
 
 `blockOnExpire` keeps the foreground timer alive in the expired state so an enforcement package in the same app can keep a break overlay active. The host must stop the session after successful parent authentication. It does not itself request overlay permission or silently change another app's colours.
 
+Active and blocking-expired sessions are restored after a normal reboot through `ChildSessionBootReceiver`; a `restored` event lets enforcement packages resume their native guard. Manufacturer AutoStart/battery policies may delay background restoration. Android intentionally suppresses boot delivery after the user presses system Force Stop, so only Device Owner provisioning can provide stronger tamper resistance.
+
 When both verification bounds are positive, the native service chooses one unpredictable checkpoint inside that active screen-time window. Screen-off time does not advance the checkpoint. The chosen point and pending/completed timestamps are persisted across process restarts. After the camera adapter produces a real local match result, call `completeChildVerification(true)`; a failed result keeps the checkpoint pending.

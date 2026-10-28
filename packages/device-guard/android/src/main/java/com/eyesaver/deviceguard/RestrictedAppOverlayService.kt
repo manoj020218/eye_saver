@@ -25,18 +25,30 @@ class RestrictedAppOverlayService : Service() {
     private const val ACTION_SHOW = "com.eyesaver.deviceguard.SHOW_RESTRICTED_APP"
     private const val ACTION_DISMISS = "com.eyesaver.deviceguard.DISMISS_RESTRICTED_APP"
     private const val PREFS = "eye_saver_restricted_app_overlay"
+    const val REASON_RESTRICTED_APP = "restricted_app"
+    const val REASON_TAMPER_PROTECTION = "tamper_protection"
     @Volatile private var instance: RestrictedAppOverlayService? = null
 
-    fun showIntent(context: Context, packageName: String, appLabel: String) =
+    fun showIntent(
+      context: Context,
+      packageName: String,
+      appLabel: String,
+      reason: String = REASON_RESTRICTED_APP
+    ) =
       Intent(context, RestrictedAppOverlayService::class.java)
         .setAction(ACTION_SHOW)
         .putExtra("blockedPackage", packageName)
         .putExtra("appLabel", appLabel)
+        .putExtra("reason", reason)
 
-    fun dismiss(context: Context) {
-      instance?.dismissOverlay() ?: run {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
-        context.stopService(Intent(context, RestrictedAppOverlayService::class.java))
+    fun dismiss(context: Context, expectedReason: String? = null) {
+      instance?.dismissOverlayIfReason(expectedReason) ?: run {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val storedReason = prefs.getString("reason", REASON_RESTRICTED_APP)
+        if (expectedReason == null || expectedReason == storedReason) {
+          prefs.edit().clear().apply()
+          context.stopService(Intent(context, RestrictedAppOverlayService::class.java))
+        }
       }
     }
   }
@@ -47,6 +59,7 @@ class RestrictedAppOverlayService : Service() {
   private var overlay: View? = null
   private var active = false
   private var appLabel = "This app"
+  private var reason = REASON_RESTRICTED_APP
 
   override fun onCreate() {
     super.onCreate()
@@ -58,15 +71,18 @@ class RestrictedAppOverlayService : Service() {
       ACTION_DISMISS -> { dismissOverlay(); return START_NOT_STICKY }
       ACTION_SHOW -> {
         appLabel = intent.getStringExtra("appLabel") ?: "This app"
+        reason = intent.getStringExtra("reason") ?: REASON_RESTRICTED_APP
         prefs.edit()
           .putBoolean("active", true)
           .putString("blockedPackage", intent.getStringExtra("blockedPackage"))
           .putString("appLabel", appLabel)
+          .putString("reason", reason)
           .apply()
       }
       else -> {
         if (!prefs.getBoolean("active", false)) { stopSelf(); return START_NOT_STICKY }
         appLabel = prefs.getString("appLabel", null) ?: "This app"
+        reason = prefs.getString("reason", REASON_RESTRICTED_APP) ?: REASON_RESTRICTED_APP
       }
     }
     active = true
@@ -114,13 +130,16 @@ class RestrictedAppOverlayService : Service() {
     setPadding(dp(32), dp(48), dp(32), dp(48))
     setBackgroundColor(Color.BLACK)
     addView(TextView(context).apply {
-      text = "$appLabel is restricted"
+      text = if (reason == REASON_TAMPER_PROTECTION) "$appLabel is parent-protected" else "$appLabel is restricted"
       setTextColor(Color.WHITE)
       textSize = 30f
       gravity = Gravity.CENTER
     })
     addView(TextView(context).apply {
-      text = "Use Home to choose an app allowed by your parent. Calls remain available unless the phone app is also restricted."
+      text = if (reason == REASON_TAMPER_PROTECTION)
+        "Settings, app installation and Eye Saver removal are protected while child mode is active. Use Home to return to an allowed app."
+      else
+        "Use Home to choose an app allowed by your parent. Calls remain available unless the phone app is also restricted."
       setTextColor(Color.LTGRAY)
       textSize = 16f
       gravity = Gravity.CENTER
@@ -200,6 +219,10 @@ class RestrictedAppOverlayService : Service() {
     prefs.edit().clear().apply()
     removeOverlay()
     stopSelf()
+  }
+
+  private fun dismissOverlayIfReason(expectedReason: String?) {
+    if (expectedReason == null || expectedReason == reason) dismissOverlay()
   }
 
   private fun removeOverlay() {
