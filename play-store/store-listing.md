@@ -41,8 +41,11 @@ Eye Saver is a parent-guided wellbeing tool, not a medical device. Camera distan
 - Intended user: parent or legal guardian (18+)
 - Contains ads: No
 - App access: All core parent controls require the locally created parent PIN. Give reviewers a temporary PIN in Play Console review instructions.
-- Privacy policy URL after GitHub Pages is enabled: `https://manoj020218.github.io/eye_saver/privacy/`
-- Support URL: `https://github.com/manoj020218/eye_saver/issues`
+- Privacy policy URL: `https://eyesaver.iotsoft.in/privacy/`
+- Website: `https://eyesaver.iotsoft.in/`
+- Data deletion URL: `https://eyesaver.iotsoft.in/delete-data/`
+- Support URL: `https://eyesaver.iotsoft.in/support/`
+- Support email: `eyesaver@iotsoft.in`
 
 ## Suggested release notes — 1.0.0
 

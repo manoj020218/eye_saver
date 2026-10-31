@@ -5,7 +5,7 @@
 - Confirm the permanent application ID. The current ID is `com.eyesaver.app`; it cannot be changed after the first production identity is established without publishing a new app.
 - Confirm the Play developer account identity and public developer contact details.
 - Generate and securely back up the upload key using `scripts/create-android-upload-key.ps1`. Never commit the `.jks` or `keystore.properties` files.
-- Enable GitHub Pages from the repository's `/docs` folder and verify `https://manoj020218.github.io/eye_saver/privacy/` opens publicly.
+- Deploy `site/` to the VPS (see `site/deploy/README.md`) and verify `https://eyesaver.iotsoft.in/privacy/` opens publicly over HTTPS.
 
 ## Play Console setup
 

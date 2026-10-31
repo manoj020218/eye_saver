@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://eyesaver.iotsoft.in/sitemap.xml

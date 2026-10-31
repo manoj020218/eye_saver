@@ -160,7 +160,7 @@ Capture the final Play screenshots from the release UI, not from a development-o
 
 1. Recheck the current target-API deadline and foreground-service policy.
 2. Reconfirm Data safety against the actual dependency graph and merged manifest.
-3. Verify the public privacy URL: `https://manoj020218.github.io/eye_saver/privacy/`.
+3. Verify the public privacy URL: `https://eyesaver.iotsoft.in/privacy/` (source in `site/`, deployment in `site/deploy/README.md`). Update `site/privacy/index.html` before any release that changes data practices.
 4. Upload the signed `.aab` to internal testing first.
 5. Complete the foreground-service declarations and attach an unlisted demonstration video showing how each service starts, remains perceptible, and stops.
 6. Run the Play pre-launch report and review Android vitals.
