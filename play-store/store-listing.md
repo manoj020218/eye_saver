@@ -45,7 +45,7 @@ Eye Saver is a parent-guided wellbeing tool, not a medical device. Camera distan
 - Website: `https://eyesaver.iotsoft.in/`
 - Data deletion URL: `https://eyesaver.iotsoft.in/delete-data/`
 - Support URL: `https://eyesaver.iotsoft.in/support/`
-- Support email: `eyesaver@iotsoft.in`
+- Support email: `iotsoft@gmail.com`
 
 ## Suggested release notes — 1.0.0
 
