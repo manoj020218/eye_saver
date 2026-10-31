@@ -102,8 +102,8 @@ class FaceDistanceService : Service(), LifecycleOwner {
   private var mode = "IDLE"
   private var profileId = ""
   private var profileKey = ""
-  private var knownDistanceCm = 35.0
-  private var requiredCalibrationSamples = 15
+  private var knownDistanceCm = 100.0
+  private var requiredCalibrationSamples = 4
   private val calibrationSamples = mutableListOf<Double>()
   private var thresholdCm = 25.0
   private var clearThresholdCm = 30.0
@@ -120,6 +120,9 @@ class FaceDistanceService : Service(), LifecycleOwner {
   private val recentDistances = ArrayDeque<Double>()
   private var overlay: View? = null
   private var overlayText: TextView? = null
+  private val calibrationTimeout = Runnable {
+    if (mode == "CALIBRATING") fail("Calibration timed out. Keep one face inside the guide and try again.")
+  }
 
   private val screenReceiver = object : BroadcastReceiver() {
     override fun onReceive(context: Context?, intent: Intent?) {
@@ -166,6 +169,7 @@ class FaceDistanceService : Service(), LifecycleOwner {
   override fun onBind(intent: Intent?): IBinder? = null
 
   override fun onDestroy() {
+    mainHandler.removeCallbacks(calibrationTimeout)
     unbindCamera()
     hideOverlay()
     try { detector.close() } catch (_: Exception) { Unit }
@@ -183,9 +187,9 @@ class FaceDistanceService : Service(), LifecycleOwner {
     mode = "CALIBRATING"
     profileId = intent.getStringExtra("profileId").orEmpty()
     profileKey = hash(profileId)
-    knownDistanceCm = intent.getDoubleExtra("knownDistanceCm", 35.0).coerceIn(20.0, 100.0)
-    requiredCalibrationSamples = intent.getIntExtra("sampleCount", 15).coerceIn(5, 50)
-    analysisIntervalMs = 250L
+    knownDistanceCm = intent.getDoubleExtra("knownDistanceCm", 100.0).coerceIn(50.0, 100.0)
+    requiredCalibrationSamples = intent.getIntExtra("sampleCount", 4).coerceIn(3, 12)
+    analysisIntervalMs = 800L
     prefs.edit()
       .putBoolean("active", true)
       .putString("mode", mode)
@@ -195,6 +199,7 @@ class FaceDistanceService : Service(), LifecycleOwner {
       .putBoolean("tooClose", false)
       .apply()
     emit("state", "Hold the phone $knownDistanceCm cm from one forward-facing face")
+    mainHandler.postDelayed(calibrationTimeout, 10_000L)
   }
 
   private fun configureMonitor(intent: Intent) {
@@ -222,6 +227,7 @@ class FaceDistanceService : Service(), LifecycleOwner {
   }
 
   private fun resetRuntime() {
+    mainHandler.removeCallbacks(calibrationTimeout)
     unbindCamera()
     hideOverlay()
     calibrationSamples.clear()
@@ -263,7 +269,7 @@ class FaceDistanceService : Service(), LifecycleOwner {
     processing.set(false)
   }
 
-  @androidx.camera.core.ExperimentalGetImage
+  @androidx.annotation.OptIn(androidx.camera.core.ExperimentalGetImage::class)
   private fun analyze(imageProxy: ImageProxy) {
     val now = SystemClock.elapsedRealtime()
     if (mode == "IDLE" || now - lastAnalyzedAtElapsed < analysisIntervalMs || !processing.compareAndSet(false, true)) {
@@ -322,7 +328,13 @@ class FaceDistanceService : Service(), LifecycleOwner {
     emit("calibration_progress", "Calibration ${calibrationSamples.size}/$requiredCalibrationSamples")
     if (calibrationSamples.size < requiredCalibrationSamples) return
     val reference = median(calibrationSamples)
+    val spreadRatio = ((calibrationSamples.maxOrNull() ?: reference) - (calibrationSamples.minOrNull() ?: reference)) / reference
+    if (spreadRatio > 0.18) {
+      mainHandler.post { fail("Calibration was not steady. Hold at ${knownDistanceCm.toInt()} cm and try again.") }
+      return
+    }
     mode = "COMPLETING"
+    mainHandler.removeCallbacks(calibrationTimeout)
     prefs.edit()
       .putFloat("calibration_reference_$profileKey", reference.toFloat())
       .putFloat("calibration_distance_$profileKey", knownDistanceCm.toFloat())
@@ -439,6 +451,7 @@ class FaceDistanceService : Service(), LifecycleOwner {
   }
 
   private fun stopMonitor(emitStopped: Boolean) {
+    mainHandler.removeCallbacks(calibrationTimeout)
     val wasActive = mode != "IDLE" || prefs.getBoolean("active", false)
     mode = "IDLE"
     unbindCamera()

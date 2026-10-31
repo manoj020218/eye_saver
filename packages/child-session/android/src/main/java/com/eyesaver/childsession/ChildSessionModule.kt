@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -114,8 +115,7 @@ class ChildSessionModule(private val context: ReactApplicationContext) : ReactCo
 
   private fun registerReceiver() {
     val filter = IntentFilter(ChildSessionService.EVENT_ACTION)
-    if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(eventReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-    else context.registerReceiver(eventReceiver, filter)
+    ContextCompat.registerReceiver(context, eventReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     receiverRegistered = true
   }
 

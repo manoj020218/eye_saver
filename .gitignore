@@ -10,3 +10,11 @@ android/local.properties
 .DS_Store
 npm-debug.log*
 *.tgz
+*.jks
+*.keystore
+apps/eye-saver/android/keystore.properties
+apps/eye-saver/android/.local-build/
+apps/eye-saver/android/.build-output/
+apps/eye-saver/android/.build-work/
+apps/eye-saver/android/.build-*/
+artifacts/

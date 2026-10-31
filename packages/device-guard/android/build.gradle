@@ -37,4 +37,5 @@ dependencies {
   def rnVersion = project.findProperty('EyeSaver_reactNativeVersion') ?: detectedVersion ?: '0.82.1'
   compileOnly "com.facebook.react:react-android:$rnVersion"
   implementation "org.jetbrains.kotlin:kotlin-stdlib"
+  implementation "androidx.core:core:1.15.0"
 }

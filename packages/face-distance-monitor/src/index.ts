@@ -85,8 +85,8 @@ export const getFaceDistanceState = (): Promise<FaceDistanceSnapshot> => module(
 export const getFaceDistanceCalibration = (profileId: string): Promise<FaceDistanceCalibration> => module().getCalibration(profileId);
 export const startFaceDistanceCalibration = (options: CalibrationOptions): Promise<boolean> => module().startCalibration({
   profileId: options.profileId,
-  knownDistanceCm: options.knownDistanceCm ?? 35,
-  sampleCount: options.sampleCount ?? 15,
+  knownDistanceCm: options.knownDistanceCm ?? 100,
+  sampleCount: options.sampleCount ?? 4,
 });
 export const clearFaceDistanceCalibration = (profileId: string): Promise<boolean> => module().clearCalibration(profileId);
 export const startFaceDistanceMonitor = (options: FaceDistanceMonitorOptions): Promise<boolean> => module().startMonitoring({

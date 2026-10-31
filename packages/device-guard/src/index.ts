@@ -12,6 +12,7 @@ export interface DeviceGuardCapabilities {
   tamperGuardActive: boolean;
   batteryOptimizationExempt: boolean;
   autoStartSettingsAvailable: boolean;
+  autoStartConfirmed: boolean;
   deviceManufacturer: string;
 }
 export interface BreakScreenOptions { message?: string; triggeredAtMs?: number }
@@ -28,6 +29,7 @@ export const requestUsageAccess = (): Promise<boolean> => module().requestUsageA
 export const requestOverlayPermission = (): Promise<boolean> => module().requestOverlayPermission();
 export const requestBatteryOptimizationExemption = (): Promise<boolean> => module().requestBatteryOptimizationExemption();
 export const openAutoStartSettings = (): Promise<boolean> => module().openAutoStartSettings();
+export const setAutoStartConfirmed = (confirmed: boolean): Promise<boolean> => module().setAutoStartConfirmed(confirmed);
 export const setTamperGuardEnabled = (enabled: boolean): Promise<boolean> => module().setTamperGuardEnabled(enabled);
 export const lockDevice = (): Promise<boolean> => module().lockDevice();
 export const setPackagesSuspended = (packageNames: string[], suspended: boolean): Promise<string[]> => module().setPackagesSuspended(packageNames, suspended);

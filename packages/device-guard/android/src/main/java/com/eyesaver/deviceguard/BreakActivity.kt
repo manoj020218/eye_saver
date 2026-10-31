@@ -6,13 +6,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
-import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import java.text.DateFormat
 import java.util.Date
 
@@ -59,8 +59,7 @@ class BreakActivity : Activity() {
     })
     setContentView(layout)
     val filter = IntentFilter(ACTION_DISMISS)
-    if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
-    else @Suppress("DEPRECATION") registerReceiver(receiver, filter)
+    ContextCompat.registerReceiver(this, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     registered = true
   }
 

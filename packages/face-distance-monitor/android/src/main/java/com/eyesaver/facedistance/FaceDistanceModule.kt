@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
+import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -47,7 +48,19 @@ class FaceDistanceModule(private val context: ReactApplicationContext) : ReactCo
     promise.resolve(result)
   }
 
-  @ReactMethod fun getState(promise: Promise) = promise.resolve(FaceDistanceService.stateMap(context))
+  @ReactMethod
+  fun getState(promise: Promise) {
+    val prefs = context.getSharedPreferences(FaceDistanceService.PREFS, Context.MODE_PRIVATE)
+    if (prefs.getString("mode", "IDLE") == "CALIBRATING" && !FaceCalibrationActivity.isRunning) {
+      prefs.edit()
+        .putBoolean("active", false)
+        .putString("mode", "IDLE")
+        .putInt("samplesCollected", 0)
+        .putInt("samplesRequired", 0)
+        .apply()
+    }
+    promise.resolve(FaceDistanceService.stateMap(context))
+  }
 
   @ReactMethod
   fun getCalibration(profileId: String, promise: Promise) {
@@ -86,15 +99,15 @@ class FaceDistanceModule(private val context: ReactApplicationContext) : ReactCo
   fun startCalibration(options: ReadableMap?, promise: Promise) {
     try {
       requireReady(showOverlay = false)
+      val activity = context.currentActivity ?: throw IllegalStateException("Keep Eye Saver visible while opening calibration")
       val profileId = options.stringValue("profileId")
       profileKey(profileId)
-      val knownDistance = options.doubleValue("knownDistanceCm", 35.0).coerceIn(20.0, 100.0)
-      val sampleCount = options.intValue("sampleCount", 15).coerceIn(5, 50)
-      startService(Intent(context, FaceDistanceService::class.java)
-        .setAction(FaceDistanceService.ACTION_CALIBRATE)
-        .putExtra("profileId", profileId)
-        .putExtra("knownDistanceCm", knownDistance)
-        .putExtra("sampleCount", sampleCount))
+      val knownDistance = options.doubleValue("knownDistanceCm", 100.0).coerceIn(50.0, 100.0)
+      val sampleCount = options.intValue("sampleCount", 4).coerceIn(3, 6)
+      activity.startActivity(Intent(activity, FaceCalibrationActivity::class.java)
+        .putExtra(FaceCalibrationActivity.EXTRA_PROFILE_ID, profileId)
+        .putExtra(FaceCalibrationActivity.EXTRA_KNOWN_DISTANCE_CM, knownDistance)
+        .putExtra(FaceCalibrationActivity.EXTRA_SAMPLE_COUNT, sampleCount))
       promise.resolve(true)
     } catch (error: Exception) {
       promise.reject("E_CALIBRATION_START", error.message ?: "Could not start face-distance calibration", error)
@@ -159,8 +172,7 @@ class FaceDistanceModule(private val context: ReactApplicationContext) : ReactCo
 
   private fun registerReceiver() {
     val filter = IntentFilter(FaceDistanceService.EVENT_ACTION)
-    if (Build.VERSION.SDK_INT >= 33) context.registerReceiver(eventReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-    else context.registerReceiver(eventReceiver, filter)
+    ContextCompat.registerReceiver(context, eventReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     receiverRegistered = true
   }
 

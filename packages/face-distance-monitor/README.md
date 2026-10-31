@@ -2,11 +2,11 @@
 
 Android-only React Native module that estimates viewing distance from front-camera face landmarks. It uses CameraX and the bundled ML Kit face detector, processes frames on-device, and does not save images.
 
-Distance is approximate. The parent must first hold the same phone at a measured distance from one forward-facing face. The module stores the median inter-eye pixel distance from that calibration, then estimates later distance using the ratio between the calibrated and current inter-eye measurements.
+Distance is approximate. Calibration opens a dedicated parent-assisted live camera. The parent keeps the child about one metre from the same phone while the child looks at a pulsing target. The guide checks that exactly one forward-facing face is fully visible and automatically collects four stable inter-eye readings. Frames are analysed in memory; no calibration photo or video is saved.
 
 ```ts
 const permission = await requestFaceDistanceCameraPermission();
-await startFaceDistanceCalibration({profileId: 'child-1', knownDistanceCm: 35});
+await startFaceDistanceCalibration({profileId: 'child-1', knownDistanceCm: 100, sampleCount: 4});
 
 const unsubscribe = onFaceDistanceEvent(event => {
   if (event.eventType === 'calibration_complete') {
@@ -19,6 +19,8 @@ const unsubscribe = onFaceDistanceEvent(event => {
   }
 });
 ```
+
+The live guide gives move-closer, move-farther, centring and head-angle feedback. Once alignment is stable, four readings are captured automatically in roughly two seconds. An unstable set restarts automatically without overwriting the previous profile, and the parent can cancel or redo calibration at any time.
 
 Three consecutive near samples trigger a non-touchable warning banner over other apps. Two readings beyond the clear threshold dismiss it. Head-angle checks and median smoothing reduce false alerts.
 

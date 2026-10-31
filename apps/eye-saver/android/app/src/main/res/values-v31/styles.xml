@@ -1,0 +1,7 @@
+<resources>
+    <style name="AppTheme.Launch" parent="AppTheme">
+        <item name="android:windowSplashScreenBackground">@color/eye_saver_splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/eye_saver_splash</item>
+        <item name="android:windowSplashScreenAnimationDuration">350</item>
+    </style>
+</resources>

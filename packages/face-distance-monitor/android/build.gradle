@@ -33,9 +33,11 @@ dependencies {
   def rnVersion = project.findProperty('EyeSaver_reactNativeVersion') ?: detectedVersion ?: '0.82.1'
   compileOnly "com.facebook.react:react-android:$rnVersion"
   implementation "org.jetbrains.kotlin:kotlin-stdlib"
+  implementation "androidx.core:core:1.15.0"
   implementation "androidx.camera:camera-core:1.6.2"
   implementation "androidx.camera:camera-camera2:1.6.2"
   implementation "androidx.camera:camera-lifecycle:1.6.2"
+  implementation "androidx.camera:camera-view:1.6.2"
   implementation "androidx.lifecycle:lifecycle-runtime:2.11.0"
   implementation "com.google.mlkit:face-detection:16.1.7"
 }

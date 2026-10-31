@@ -22,6 +22,7 @@ class DeviceGuardModule(private val context: ReactApplicationContext) : ReactCon
   private val admin by lazy { ComponentName(context, EyeSaverAdminReceiver::class.java) }
   private val power by lazy { context.getSystemService(Context.POWER_SERVICE) as PowerManager }
   private val selectiveGuardPrefs by lazy { context.getSharedPreferences(RestrictedAppMonitorService.PREFS, Context.MODE_PRIVATE) }
+  private val setupPrefs by lazy { context.getSharedPreferences("eye_saver_phone_setup", Context.MODE_PRIVATE) }
 
   override fun getName(): String = NAME
 
@@ -40,6 +41,7 @@ class DeviceGuardModule(private val context: ReactApplicationContext) : ReactCon
     result.putBoolean("tamperGuardActive", TamperGuardService.isActive(context))
     result.putBoolean("batteryOptimizationExempt", Build.VERSION.SDK_INT < 23 || power.isIgnoringBatteryOptimizations(context.packageName))
     result.putBoolean("autoStartSettingsAvailable", autoStartIntent() != null)
+    result.putBoolean("autoStartConfirmed", setupPrefs.getBoolean("autoStartConfirmed", false))
     result.putString("deviceManufacturer", Build.MANUFACTURER)
     promise.resolve(result)
   }
@@ -103,6 +105,13 @@ class DeviceGuardModule(private val context: ReactApplicationContext) : ReactCon
     } catch (error: Exception) {
       promise.reject("E_AUTOSTART_SETTINGS", "Could not open AutoStart settings", error)
     }
+  }
+
+  @ReactMethod
+  fun setAutoStartConfirmed(confirmed: Boolean, promise: Promise) {
+    val saved = setupPrefs.edit().putBoolean("autoStartConfirmed", confirmed).commit()
+    if (saved) promise.resolve(true)
+    else promise.reject("E_AUTOSTART_CONFIRM", "Could not remember the AutoStart confirmation")
   }
 
   @ReactMethod

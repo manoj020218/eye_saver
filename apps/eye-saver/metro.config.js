@@ -11,6 +11,9 @@ const workspaceRoot = path.resolve(__dirname, '../..');
 const config = {
   watchFolders: [workspaceRoot],
   resolver: {
+    blockList: [
+      /.*[\\/]android[\\/](?:app[\\/])?(?:build|\.cxx|\.local-build|\.build-[^\\/]+)[\\/].*/,
+    ],
     nodeModulesPaths: [
       path.resolve(__dirname, 'node_modules'),
       path.resolve(workspaceRoot, 'node_modules'),

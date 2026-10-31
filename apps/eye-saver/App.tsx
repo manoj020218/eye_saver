@@ -32,6 +32,7 @@ import {
   requestOverlayPermission,
   requestUsageAccess,
   setRestrictedPackages,
+  setAutoStartConfirmed,
   setTamperGuardEnabled,
   showBreakScreen,
   startSelectiveGuard,
@@ -55,6 +56,7 @@ import {
 } from '@eye-saver/face-distance-monitor';
 import {getParentAuthStatus, setParentPin, verifyParentPin} from '@eye-saver/parent-auth';
 import {FaceProximity, useProximityAlert, type ProximityCapabilities} from '../../src';
+import ParentDashboard, {type DashboardTab} from './ParentDashboard';
 
 type Screen = 'loading' | 'setup' | 'login' | 'dashboard' | 'child';
 const DISTANCE_PROFILE = 'child-1';
@@ -71,7 +73,7 @@ const EMPTY_GUARD: DeviceGuardCapabilities = {
   canSuspendPackages: false, isLockTaskPermitted: false, canDrawOverlays: false,
   canWriteSystemGrayscale: false,
   tamperGuardEnabled: true, tamperGuardActive: false,
-  batteryOptimizationExempt: false, autoStartSettingsAvailable: false, deviceManufacturer: 'Android',
+  batteryOptimizationExempt: false, autoStartSettingsAvailable: false, autoStartConfirmed: false, deviceManufacturer: 'Android',
 };
 const EMPTY_DISTANCE_CAPABILITIES: FaceDistanceCapabilities = {
   androidSupported: true, frontCameraAvailable: false, cameraPermissionGranted: false,
@@ -120,6 +122,8 @@ function AppContent() {
   const [distanceEnabled, setDistanceEnabled] = useState(false);
   const [distanceThresholdCm, setDistanceThresholdCm] = useState(25);
   const [distanceIntervalMs, setDistanceIntervalMs] = useState(1500);
+  const [dashboardTab, setDashboardTab] = useState<DashboardTab>('home');
+  const [appQuery, setAppQuery] = useState('');
   const [, redrawClock] = useState(0);
 
   useProximityAlert({
@@ -201,7 +205,7 @@ function AppContent() {
       unsubscribe = onFaceDistanceEvent(event => {
         setDistanceState(event);
         if (event.eventType === 'calibration_progress') {
-          setMessage(`Keep one face straight at 35 cm: ${event.samplesCollected}/${event.samplesRequired}.`);
+          setMessage(`Automatically capturing the child face: ${event.samplesCollected}/${event.samplesRequired}.`);
         }
         if (event.eventType === 'calibration_complete') {
           setDistanceEnabled(true);
@@ -257,7 +261,14 @@ function AppContent() {
   async function createPin() {
     if (pin !== confirmPin) { setMessage('PIN confirmation does not match.'); return; }
     setBusy(true); setMessage('');
-    try { await setParentPin(pin); setPin(''); setConfirmPin(''); setScreen('dashboard'); }
+    try {
+      await setParentPin(pin);
+      setPin('');
+      setConfirmPin('');
+      setDashboardTab('setup');
+      setMessage('Parent PIN secured. Complete the four required phone settings below.');
+      setScreen('dashboard');
+    }
     catch (error) { setMessage(errorText(error)); }
     finally { setBusy(false); }
   }
@@ -280,6 +291,7 @@ function AppContent() {
         await dismissBreakScreen();
         setSession(EMPTY_SESSION);
       }
+      setDashboardTab('home');
       setScreen('dashboard');
     } catch (error) { setMessage(errorText(error)); }
     finally { setBusy(false); }
@@ -307,7 +319,7 @@ function AppContent() {
         }
       }
       if (distanceEnabled && !distanceCalibration.calibrated) {
-        setMessage('Calibrate face distance at 35 cm before enabling camera distance warnings.');
+        setMessage('Create the child distance profile with the parent-assisted camera before enabling distance warnings.');
         return;
       }
       await requestNotificationPermission();
@@ -352,8 +364,8 @@ function AppContent() {
         setMessage('Camera permission was not granted. Calibration cannot start.');
         return;
       }
-      await startFaceDistanceCalibration({profileId: DISTANCE_PROFILE, knownDistanceCm: 35, sampleCount: 15});
-      setMessage('Hold the phone 35 cm from one face, look straight at it, and keep still for a few seconds.');
+      await startFaceDistanceCalibration({profileId: DISTANCE_PROFILE, knownDistanceCm: 100, sampleCount: 4});
+      setMessage('Parent camera opened. Keep the child about 1 metre away and place the whole face inside the oval.');
     } catch (error) { setMessage(errorText(error)); }
     finally { setBusy(false); }
   }
@@ -370,6 +382,49 @@ function AppContent() {
     }
   }
 
+  if (screen === 'dashboard') {
+    return <ParentDashboard
+      tab={dashboardTab}
+      onTab={setDashboardTab}
+      onLock={() => { setPin(''); setMessage(''); setScreen('login'); }}
+      message={message}
+      onDismissMessage={() => setMessage('')}
+      busy={busy}
+      setupReadyCount={setupReadyCount}
+      durationMinutes={durationMinutes}
+      onDuration={setDurationMinutes}
+      onStart={startSession}
+      guard={guard}
+      faceEnrolled={faceEnrolled}
+      onOverlayPermission={async () => { setMessage('Enable Allow display over other apps for Eye Saver, then press Back.'); await requestOverlayPermission(); }}
+      onUsagePermission={async () => { setMessage('Select Eye Saver, enable Permit usage access, then press Back.'); await requestUsageAccess(); }}
+      onDeviceAdmin={async () => { setMessage('Tap Activate this device admin, then return to Eye Saver.'); await requestDeviceAdmin(); }}
+      onBatteryExemption={async () => { setMessage('Choose Allow or No restrictions, then return.'); await requestBatteryOptimizationExemption(); }}
+      onAutoStart={async () => { setMessage('Enable AutoStart for Eye Saver if shown, then press Back.'); await openAutoStartSettings(); }}
+      onAutoStartConfirmed={async confirmed => { await setAutoStartConfirmed(confirmed); await refreshCapabilities(); setMessage(confirmed ? 'AutoStart marked ready on this phone.' : 'AutoStart confirmation cleared.'); }}
+      onTamperGuard={async value => { try { await setTamperGuardEnabled(value); await refreshCapabilities(); } catch (error) { setMessage(errorText(error)); } }}
+      launchableApps={launchableApps}
+      restrictedPackages={restrictedPackages}
+      appQuery={appQuery}
+      onAppQuery={setAppQuery}
+      onToggleApp={toggleRestrictedPackage}
+      proximity={proximity}
+      proximityEnabled={proximityEnabled}
+      onProximityEnabled={setProximityEnabled}
+      distanceCapabilities={distanceCapabilities}
+      distanceCalibration={distanceCalibration}
+      distanceState={distanceState}
+      distanceEnabled={distanceEnabled}
+      onDistanceEnabled={setDistanceEnabled}
+      distanceThresholdCm={distanceThresholdCm}
+      onDistanceThreshold={setDistanceThresholdCm}
+      distanceIntervalMs={distanceIntervalMs}
+      onDistanceInterval={setDistanceIntervalMs}
+      onCameraPermission={async () => { await requestFaceDistanceCameraPermission(); await refreshCapabilities(); }}
+      onCalibrate={calibrateFaceDistance}
+    />;
+  }
+
   if (screen === 'loading') return <SafeAreaView style={styles.center}><ActivityIndicator size="large" color="#5fe0b7" /><Text style={styles.muted}>Preparing secure child mode…</Text></SafeAreaView>;
 
   if (screen === 'setup' || screen === 'login') {
@@ -384,10 +439,10 @@ function AppContent() {
     return <SafeAreaView style={styles.childPage}>
       <StatusBar barStyle="light-content" backgroundColor="#07120f" />
       <View style={styles.childContent}>
-        <Text style={styles.eyebrow}>CHILD MODE</Text>
+        <Text style={styles.eyebrow}>{session.state === 'expired' ? 'SCREEN BREAK' : 'PROTECTION ACTIVE'}</Text>
         <Text style={styles.timer}>{session.state === 'expired' ? 'BREAK' : remainingLabel}</Text>
         <Text style={styles.childTitle}>{session.state === 'expired' ? 'Time to rest your eyes' : 'Screen time remaining'}</Text>
-        <Text style={styles.muted}>{session.isScreenOn ? 'Active screen time is being counted' : 'Screen is off — timer paused automatically'}</Text>
+        <Text style={styles.muted}>{session.state === 'expired' ? 'Protected apps stay covered until a parent unlocks controls.' : (session.isScreenOn ? 'Only active screen time is counted' : 'Screen is off — timer paused automatically')}</Text>
         {distanceEnabled && distanceState.distanceCm != null && <Text style={styles.distanceReading}>Face distance: ~{Math.round(distanceState.distanceCm)} cm</Text>}
         <View style={styles.rule} />
         <Text style={styles.label}>Parent PIN to end child mode</Text>
@@ -457,12 +512,12 @@ function AppContent() {
           onPress={async () => { await requestFaceDistanceCameraPermission(); await refreshCapabilities(); }}
         />
         <StatusRow
-          label="35 cm calibration"
+          label="Child distance profile"
           ready={distanceCalibration.calibrated}
           action="Required"
-          note={distanceCalibration.calibrated ? `Calibrated at ${clock(distanceCalibration.calibratedAtMs)}` : 'Place one forward-facing face 35 cm from the phone'}
+          note={distanceCalibration.calibrated ? `Calibrated at ${clock(distanceCalibration.calibratedAtMs)}` : 'Parent holds the phone about 1 metre from the child'}
         />
-        <PrimaryButton label={distanceState.mode === 'calibrating' ? `Calibrating ${distanceState.samplesCollected}/${distanceState.samplesRequired}` : 'Calibrate at 35 cm'} onPress={calibrateFaceDistance} disabled={busy || distanceState.mode === 'calibrating'} />
+        <PrimaryButton label={distanceState.mode === 'calibrating' ? `Auto capture ${distanceState.samplesCollected}/${distanceState.samplesRequired}` : 'Open guided camera'} onPress={calibrateFaceDistance} disabled={busy || distanceState.mode === 'calibrating'} />
         <View style={styles.switchRow}><View style={styles.flex}><Text style={styles.rowTitle}>Enable during child mode</Text><Text style={styles.rowNote}>Android shows its camera privacy indicator and an ongoing notification</Text></View><Switch value={distanceEnabled} onValueChange={setDistanceEnabled} disabled={!distanceCalibration.calibrated} trackColor={{true: '#2f8068'}} thumbColor="#d8fff2" /></View>
         <Text style={styles.optionLabel}>Too-close threshold</Text>
         <View style={styles.chips}>{[20, 25, 30].map(value => <Pressable key={value} onPress={() => setDistanceThresholdCm(value)} style={[styles.chip, distanceThresholdCm === value && styles.chipActive]}><Text style={[styles.chipText, distanceThresholdCm === value && styles.chipTextActive]}>{value} cm</Text></Pressable>)}</View>
@@ -484,9 +539,15 @@ export default function App() {
 
 function PinScreen(props: {setup: boolean; pin: string; confirmPin: string; busy: boolean; message: string; onPin: (value: string) => void; onConfirm: (value: string) => void; onSubmit: () => void}) {
   return <SafeAreaView style={styles.page}><StatusBar barStyle="light-content" backgroundColor="#07120f" /><View style={styles.authWrap}>
+    <View style={styles.authMark}><Text style={styles.authMarkText}>◉</Text></View>
     <Text style={styles.eyebrow}>{props.setup ? 'FIRST-TIME SETUP' : 'PARENT ACCESS'}</Text>
     <Text style={styles.heading}>{props.setup ? 'Create parent PIN' : 'Welcome back'}</Text>
     <Text style={styles.subtitle}>{props.setup ? 'Use 4–12 digits. Five failed attempts trigger a native lockout.' : 'Enter the PIN to change child-mode settings.'}</Text>
+    {props.setup && <View style={styles.onboardingBox}>
+      <Text style={styles.onboardingLine}>1  Secure parent controls with a PIN</Text>
+      <Text style={styles.onboardingLine}>2  Follow four guided phone settings</Text>
+      <Text style={styles.onboardingLine}>3  Choose time and start child mode</Text>
+    </View>}
     <TextInput value={props.pin} onChangeText={props.onPin} style={styles.pinInput} secureTextEntry keyboardType="number-pad" maxLength={12} placeholder="Parent PIN" placeholderTextColor="#53635d" />
     {props.setup && <TextInput value={props.confirmPin} onChangeText={props.onConfirm} style={styles.pinInput} secureTextEntry keyboardType="number-pad" maxLength={12} placeholder="Confirm PIN" placeholderTextColor="#53635d" />}
     <PrimaryButton label={props.setup ? 'Secure parent controls' : 'Unlock dashboard'} onPress={props.onSubmit} disabled={props.busy || props.pin.length < 4 || (props.setup && props.confirmPin.length < 4)} />
@@ -500,5 +561,5 @@ function StatusRow({label, ready, action, note, onPress}: {label: string; ready:
 function ActionRow({label, action, note, onPress}: {label: string; action: string; note?: string; onPress: () => void | Promise<unknown>}) { return <View style={styles.statusRow}><View style={styles.flex}><Text style={styles.rowTitle}>{label}</Text>{note && <Text style={styles.rowNote}>{note}</Text>}</View><Pressable onPress={() => {Promise.resolve(onPress()).catch(error => console.warn(error));}} style={[styles.badge, styles.pending]}><Text style={styles.badgeText}>{action}</Text></Pressable></View>; }
 
 const styles = StyleSheet.create({
-  page: {flex: 1, backgroundColor: '#07120f'}, childPage: {flex: 1, backgroundColor: '#07120f'}, center: {flex: 1, backgroundColor: '#07120f', alignItems: 'center', justifyContent: 'center', gap: 16}, scroll: {padding: 22, paddingBottom: 48}, authWrap: {flex: 1, justifyContent: 'center', padding: 28}, childContent: {flex: 1, justifyContent: 'center', alignItems: 'stretch', padding: 28}, headerRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}, heading: {color: '#effff9', fontSize: 38, fontWeight: '800', letterSpacing: -1}, eyebrow: {color: '#5fe0b7', fontSize: 12, fontWeight: '800', letterSpacing: 2, marginBottom: 8}, subtitle: {color: '#9bb0a9', fontSize: 16, lineHeight: 23, marginTop: 8, marginBottom: 24}, muted: {color: '#9bb0a9', fontSize: 15, lineHeight: 22, textAlign: 'center'}, distanceReading: {color: '#5fe0b7', fontSize: 16, fontWeight: '700', textAlign: 'center', marginTop: 12}, lockLink: {color: '#5fe0b7', fontWeight: '700', padding: 12}, card: {backgroundColor: '#10211b', borderColor: '#1c392f', borderWidth: 1, borderRadius: 20, padding: 18, marginBottom: 16}, cardTitle: {color: '#effff9', fontSize: 18, fontWeight: '700', marginBottom: 12}, setupIntro: {color: '#b9cec7', fontSize: 13, lineHeight: 19, marginBottom: 6}, setupDone: {color: '#5fe0b7', fontSize: 13, fontWeight: '700', marginTop: 12}, statusRow: {flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomColor: '#1b342c', borderBottomWidth: StyleSheet.hairlineWidth}, switchRow: {flexDirection: 'row', alignItems: 'center', gap: 12}, flex: {flex: 1}, rowTitle: {color: '#e2f5ee', fontSize: 15, fontWeight: '600'}, rowNote: {color: '#849a92', fontSize: 12, lineHeight: 17, marginTop: 3}, badge: {paddingHorizontal: 11, paddingVertical: 8, borderRadius: 999, maxWidth: 110}, ready: {backgroundColor: '#205c49'}, pending: {backgroundColor: '#725b19'}, badgeText: {color: '#eafff7', fontSize: 12, fontWeight: '700', textAlign: 'center'}, chips: {flexDirection: 'row', flexWrap: 'wrap', gap: 9}, chip: {borderColor: '#2a493e', borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10}, chipActive: {backgroundColor: '#5fe0b7', borderColor: '#5fe0b7'}, chipText: {color: '#b4c8c1', fontWeight: '700'}, chipTextActive: {color: '#07120f'}, optionLabel: {color: '#b9cec7', fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 9}, primary: {backgroundColor: '#5fe0b7', minHeight: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, marginTop: 12}, primaryDim: {opacity: 0.45}, primaryText: {color: '#07120f', fontSize: 16, fontWeight: '800'}, disclosure: {color: '#70867e', fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 14}, pinInput: {backgroundColor: '#10211b', borderColor: '#2a493e', borderWidth: 1, borderRadius: 14, color: '#effff9', fontSize: 22, letterSpacing: 5, paddingHorizontal: 18, marginTop: 12, minHeight: 56}, error: {color: '#ff9b91', fontSize: 14, lineHeight: 20, marginTop: 14, textAlign: 'center'}, timer: {color: '#effff9', fontSize: 72, fontWeight: '200', textAlign: 'center', letterSpacing: -3, marginVertical: 18}, childTitle: {color: '#dff8ef', fontSize: 23, fontWeight: '700', textAlign: 'center', marginBottom: 8}, rule: {height: 1, backgroundColor: '#1c392f', marginVertical: 30}, label: {color: '#9bb0a9', fontSize: 13, fontWeight: '700'},
+  page: {flex: 1, backgroundColor: '#07120f'}, childPage: {flex: 1, backgroundColor: '#07120f'}, center: {flex: 1, backgroundColor: '#07120f', alignItems: 'center', justifyContent: 'center', gap: 16}, scroll: {padding: 22, paddingBottom: 48}, authWrap: {flex: 1, justifyContent: 'center', padding: 28}, authMark: {width: 58, height: 58, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#174638', borderColor: '#477560', borderWidth: 1, marginBottom: 24}, authMarkText: {color: '#e8c77e', fontSize: 34, fontWeight: '800'}, onboardingBox: {backgroundColor: '#10271f', borderColor: '#22473b', borderWidth: 1, borderRadius: 16, padding: 15, gap: 9, marginBottom: 8}, onboardingLine: {color: '#b9cec7', fontSize: 13, lineHeight: 18, fontWeight: '600'}, childContent: {flex: 1, justifyContent: 'center', alignItems: 'stretch', padding: 28}, headerRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}, heading: {color: '#effff9', fontSize: 38, fontWeight: '800', letterSpacing: -1}, eyebrow: {color: '#5fe0b7', fontSize: 12, fontWeight: '800', letterSpacing: 2, marginBottom: 8}, subtitle: {color: '#9bb0a9', fontSize: 16, lineHeight: 23, marginTop: 8, marginBottom: 24}, muted: {color: '#9bb0a9', fontSize: 15, lineHeight: 22, textAlign: 'center'}, distanceReading: {color: '#5fe0b7', fontSize: 16, fontWeight: '700', textAlign: 'center', marginTop: 12}, lockLink: {color: '#5fe0b7', fontWeight: '700', padding: 12}, card: {backgroundColor: '#10211b', borderColor: '#1c392f', borderWidth: 1, borderRadius: 20, padding: 18, marginBottom: 16}, cardTitle: {color: '#effff9', fontSize: 18, fontWeight: '700', marginBottom: 12}, setupIntro: {color: '#b9cec7', fontSize: 13, lineHeight: 19, marginBottom: 6}, setupDone: {color: '#5fe0b7', fontSize: 13, fontWeight: '700', marginTop: 12}, statusRow: {flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomColor: '#1b342c', borderBottomWidth: StyleSheet.hairlineWidth}, switchRow: {flexDirection: 'row', alignItems: 'center', gap: 12}, flex: {flex: 1}, rowTitle: {color: '#e2f5ee', fontSize: 15, fontWeight: '600'}, rowNote: {color: '#849a92', fontSize: 12, lineHeight: 17, marginTop: 3}, badge: {paddingHorizontal: 11, paddingVertical: 8, borderRadius: 999, maxWidth: 110}, ready: {backgroundColor: '#205c49'}, pending: {backgroundColor: '#725b19'}, badgeText: {color: '#eafff7', fontSize: 12, fontWeight: '700', textAlign: 'center'}, chips: {flexDirection: 'row', flexWrap: 'wrap', gap: 9}, chip: {borderColor: '#2a493e', borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10}, chipActive: {backgroundColor: '#5fe0b7', borderColor: '#5fe0b7'}, chipText: {color: '#b4c8c1', fontWeight: '700'}, chipTextActive: {color: '#07120f'}, optionLabel: {color: '#b9cec7', fontSize: 13, fontWeight: '700', marginTop: 18, marginBottom: 9}, primary: {backgroundColor: '#5fe0b7', minHeight: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18, marginTop: 12}, primaryDim: {opacity: 0.45}, primaryText: {color: '#07120f', fontSize: 16, fontWeight: '800'}, disclosure: {color: '#70867e', fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 14}, pinInput: {backgroundColor: '#10211b', borderColor: '#2a493e', borderWidth: 1, borderRadius: 14, color: '#effff9', fontSize: 22, letterSpacing: 5, paddingHorizontal: 18, marginTop: 12, minHeight: 56}, error: {color: '#ff9b91', fontSize: 14, lineHeight: 20, marginTop: 14, textAlign: 'center'}, timer: {color: '#effff9', fontSize: 72, fontWeight: '200', textAlign: 'center', letterSpacing: -3, marginVertical: 18}, childTitle: {color: '#dff8ef', fontSize: 23, fontWeight: '700', textAlign: 'center', marginBottom: 8}, rule: {height: 1, backgroundColor: '#1c392f', marginVertical: 30}, label: {color: '#9bb0a9', fontSize: 13, fontWeight: '700'},
 });
